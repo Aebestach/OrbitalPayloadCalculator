@@ -50,6 +50,7 @@
       <HintPath>..\..\0. Environment\ClickThroughBlocker.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="System" />
     <Reference Include="UnityEngine">
       <HintPath>..\..\0. Environment\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
