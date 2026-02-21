@@ -1,0 +1,6 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Release" />
+  </Configurations>
+  <Project Path="OrbitalPayloadCalculator.csproj" Id="55ab96cd-3577-4530-9e33-c867c3b9905e" />
+</Solution>
