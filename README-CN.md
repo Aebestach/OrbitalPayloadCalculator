@@ -102,11 +102,11 @@
 <div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
   <div style="text-align: center;">
     <img src="https://i.imgur.com/pylRnia.jpg" alt="融合载荷法" width="1000"/>
-    <p>融合载荷法</p>
+    <p align="center">融合载荷法</p>
   </div>
   <div style="text-align: center;">
     <img src="https://i.imgur.com/QRGMMKk.jpg" alt="纯火箭法" width="1000"/>
-    <p>纯火箭法</p>
+    <p align="center">纯火箭法</p>
   </div>
 </div>
 

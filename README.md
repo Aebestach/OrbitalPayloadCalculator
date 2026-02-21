@@ -101,12 +101,12 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 <div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/pylRnia.jpg" alt="融合载荷法" width="1000"/>
-    <p>Incorporate Payload</p>
+    <img src="https://i.imgur.com/pylRnia.jpg" alt="Incorporate Payload" width="1000"/>
+    <p align="center">Incorporate Payload</p>
   </div>
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="纯火箭法" width="1000"/>
-    <p>Pure Rocket</p>
+    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="Pure Rocket" width="1000"/>
+    <p align="center">Pure Rocket</p>
   </div>
 </div>
 
