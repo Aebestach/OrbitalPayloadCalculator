@@ -54,7 +54,6 @@ namespace OrbitalPayloadCalculator.Calculation
         public double Eccentricity;
         public double InclinationDegrees;
         public LossEstimate Losses;
-        public int PayloadCutoffStage = -1;
         public List<StageInfo> ActiveStages = new List<StageInfo>();
     }
 
@@ -62,12 +61,11 @@ namespace OrbitalPayloadCalculator.Calculation
     {
         private const double G0 = 9.80665d;
 
-        public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig, int payloadCutoffStage)
+        public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig)
         {
             var result = new PayloadCalculationResult
             {
-                Losses = new LossEstimate(),
-                PayloadCutoffStage = payloadCutoffStage
+                Losses = new LossEstimate()
             };
 
             if (stats == null || !stats.HasVessel)
@@ -96,7 +94,7 @@ namespace OrbitalPayloadCalculator.Calculation
             var absLat = Math.Abs(orbitTargets.LaunchLatitudeDegrees);
             var effectiveInc = orbitTargets.TargetInclinationDegrees;
             if (effectiveInc > 90.0d) effectiveInc = 180.0d - effectiveInc;
-            if (effectiveInc + 0.01d < absLat)
+            if (effectiveInc + 1.0d < absLat)
             {
                 result.ErrorMessageKey = "#LOC_OPC_InclinationBelowLatitude";
                 return result;
@@ -129,9 +127,9 @@ namespace OrbitalPayloadCalculator.Calculation
 
             if (stats.Stages.Count > 0)
             {
-                totalDv = ComputeStagedDv(stats, body, payloadCutoffStage, activeStages, out maxPropStageNum);
-                result.AvailableDvSeaLevel = ComputeStagedDvForDisplay(stats, body, payloadCutoffStage, useSeaLevelIsp: true);
-                result.AvailableDvVacuum = ComputeStagedDvForDisplay(stats, body, payloadCutoffStage, useSeaLevelIsp: false);
+                totalDv = ComputeStagedDv(stats, body, -1, activeStages, out maxPropStageNum);
+                result.AvailableDvSeaLevel = ComputeStagedDvForDisplay(stats, body, -1, useSeaLevelIsp: true);
+                result.AvailableDvVacuum = ComputeStagedDvForDisplay(stats, body, -1, useSeaLevelIsp: false);
             }
             else
             {
@@ -140,18 +138,30 @@ namespace OrbitalPayloadCalculator.Calculation
                 result.AvailableDvVacuum = ComputeSimpleDvWithMode(stats, body, useSeaLevelIsp: false);
             }
 
-            // Iteratively refine: a heavier rocket (with payload) has higher
-            // gravity/drag losses, which raises required DV and lowers payload.
             double payloadGuess = 0.0d;
             LossEstimate losses = null;
             double requiredDv = 0.0d;
 
             for (int iter = 0; iter < 4; iter++)
             {
-                var extraForLoss = payloadCutoffStage < 0 ? payloadGuess : 0.0d;
+                var extraForLoss = payloadGuess;
                 losses = LossModel.Estimate(body, orbitTargets, lossConfig, stats, extraForLoss);
                 requiredDv = Math.Max(0.0d, inertialDv + losses.TotalDv);
-                payloadGuess = EstimatePayload(stats, body, requiredDv, payloadCutoffStage, maxPropStageNum);
+                payloadGuess = EstimatePayload(stats, body, requiredDv, -1, maxPropStageNum);
+            }
+
+            // Debug: dump per-stage and cumulative mass info
+            if (stats.Stages.Count > 0)
+            {
+                var sortedForLog = new List<StageInfo>(stats.Stages);
+                sortedForLog.Sort((x, y) => x.StageNumber.CompareTo(y.StageNumber));
+                var cumulative = 0.0d;
+                foreach (var s in sortedForLog)
+                {
+                    cumulative += s.WetMassTons;
+                    Debug.Log($"[OPC] Stage {s.StageNumber}: Wet={s.WetMassTons:F4}t  Dry={s.DryMassTons:F4}t  Prop={s.PropellantMassTons:F4}t  CumulativeWet={cumulative:F4}t");
+                }
+                Debug.Log($"[OPC] Estimated={payloadGuess:F4}t  RequiredDv={requiredDv:F1}m/s  AvailDv={totalDv:F1}m/s");
             }
 
             result.Success = true;
@@ -367,17 +377,6 @@ namespace OrbitalPayloadCalculator.Calculation
         private static double EstimatePayload(VesselStats stats, CelestialBody body, double requiredDv,
             int payloadCutoffStage, int maxPropStageNum)
         {
-            if (stats.Stages.Count > 0 && payloadCutoffStage >= 0)
-            {
-                var payloadMass = 0.0d;
-                foreach (var stage in stats.Stages)
-                {
-                    if (stage.StageNumber <= payloadCutoffStage)
-                        payloadMass += stage.WetMassTons;
-                }
-                return payloadMass;
-            }
-
             if (stats.Stages.Count == 0)
             {
                 var isp = GetEffectiveIsp(stats.VacuumIspSeconds, stats.SeaLevelIspSeconds, body, true);

@@ -13,7 +13,6 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle ButtonStyle { get; private set; }
         public GUIStyle ToggleStyle { get; private set; }
         public GUIStyle CenteredHeaderStyle { get; private set; }
-        public GUIStyle ActiveButtonStyle { get; private set; }
         public GUIStyle PanelStyle { get; private set; }
         public GUIStyle SectionStyle { get; private set; }
 
@@ -61,16 +60,6 @@ namespace OrbitalPayloadCalculator.UI
             };
             FieldStyle = new GUIStyle(skin.textField) { fontSize = fontSize };
             ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter };
-            var activeColor = new Color(0.4f, 0.85f, 1f);
-            ActiveButtonStyle = new GUIStyle(skin.button)
-            {
-                fontSize = fontSize,
-                alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = activeColor },
-                hover = { textColor = activeColor },
-                active = { textColor = activeColor },
-                focused = { textColor = activeColor }
-            };
             ToggleStyle = new GUIStyle(skin.toggle) { fontSize = fontSize };
 
             _panelBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
@@ -105,7 +94,6 @@ namespace OrbitalPayloadCalculator.UI
             SmallLabelStyle = null;
             FieldStyle = null;
             ButtonStyle = null;
-            ActiveButtonStyle = null;
             ToggleStyle = null;
             PanelStyle = null;
             SectionStyle = null;
