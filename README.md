@@ -118,7 +118,7 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     *   Gravity turn pitching over based on a power-law curve.
     *   Drag is calculated using estimated CdA (Drag Coefficient * Area) derived from mass.
     *   Thrust and ISP vary dynamically with atmospheric pressure.
-3.  **Binary Search:** It runs the simulation multiple times, adjusting the "simulated payload mass" until the Available Delta-V matches the Required Delta-V, finding the limit of your rocket's capacity.
+3.  **Binary Search:** It runs the simulation multiple times, adjusting the ***simulated payload mass*** until the Available Delta-V matches the Required Delta-V, finding the limit of your rocket's capacity.
 
 ## ⚠️ Notes
 
