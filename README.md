@@ -1,6 +1,7 @@
 # Orbital Payload Calculator
 
 <div align="center">
+<占位符>
 
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
@@ -13,9 +14,27 @@
 
 ## 📖 Introduction
 
+In Kerbal Space Program (KSP), designing rockets is often less "engineering" and more "alchemy" — slapping on fuel tanks, guessing stage counts, praying it doesn't explode at launch, and only realizing after orbit insertion that:
+
+*   Either you have too little Delta-V, missing the Mun by a hair and watching your Kerbals cry;
+*   Or you have absurdly too much Delta-V, arriving at the Mun with enough fuel to tour the solar system;
+*   Most awkwardly, you finally reach orbit only to find the payload feels like a lead block, watching the fuel gauge drop bar by bar along with your heart.
+
+Surprisingly, despite KSP being a decade old, few tools have specifically addressed this problem. As a rocket designer myself, I've felt the pain: constantly checking ΔV charts and calculating payloads is brain-draining and error-prone. These needs and "pain points" led to the birth of **Orbital Payload Calculator**.
+
+Now, **Orbital Payload Calculator** upgrades your "rocket alchemy" to "rational engineering".
+It calculates payload mass and required Delta-V in advance, so you no longer pile on fuel by feel or carry extra "emotional support fuel tanks".
+
+From now on, your rockets won't be "almost there" or "overflowing with fuel", but rather — just right, reaching orbit elegantly and heading to the Mun with style. 🚀
+
 **Orbital Payload Calculator** is a utility mod for **Kerbal Space Program (KSP)** that estimates the maximum payload mass your rocket can deliver to a specific target orbit. It performs a simulation-based calculation to account for gravity, atmospheric drag, and steering losses, helping you design efficient launch vehicles without the guesswork.
 
 It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that are Landed or PreLaunch).
+
+<div align="center">
+    <img src="https://imgur.com/AQLVjPl.jpg" alt="UI Screenshot"/>
+</div>
+
 
 ## ✨ Features
 
@@ -52,7 +71,7 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 ### Open the Calculator
 *   **Hotkey:** Press **Left Alt + P** (default) to toggle the window.
-*   **Toolbar:** Click the **Orbital Payload Calculator** icon in the AppLauncher (if enabled).
+*   **Toolbar:** Click the **Orbital Payload Calculator** icon in the AppLauncher.
 
 ### Workflow
 1.  **Select Body:** Choose the celestial body you are launching from (e.g., Kerbin).
@@ -68,14 +87,28 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 ### Results Explained
 *   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
-*   **Required Δv:** Total Delta-V needed to reach orbit (Orbital Speed + Losses + Plane Change + Rotation Assist).
-*   **Available Δv:** Your vessel's total Delta-V.
+*   **Required Delta-V:** Total Delta-V needed to reach orbit (Orbital Speed + Losses + Plane Change ± Rotation Assist).
+*   **Available Delta-V:** Your vessel's total Delta-V.
 *   **Loss Breakdown:** Shows how much Δv is lost to Gravity, Drag, and Steering (Attitude).
 
-## ⚙️ Configuration
+### Payload Calculation Methods
 
-*   **Font Size:** You can adjust the UI font size (13-20) directly in the window header. Click **Save** to apply.
-*   **Settings Storage:** Font size preference is saved in Unity's `PlayerPrefs`.
+*   **Incorporate Payload:**
+   Treats the payload as part of the total rocket mass. As long as the estimated payload is greater than 0, the rocket still has transport capacity.
+
+*   **Pure Rocket:**
+   Sets the payload aside (does not affect rocket calculation) and calculates the rocket's own Delta-V directly to determine transport capacity.
+
+<div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start;">
+  <div style="text-align: center;">
+    <img src="https://i.imgur.com/pylRnia.jpg" alt="Incorporate Payload" width="500"/>
+    <p>Incorporate Payload</p>
+  </div>
+  <div style="text-align: center;">
+    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="Pure Rocket" width="500"/>
+    <p>Pure Rocket</p>
+  </div>
+</div>
 
 ## 🧩 How It Works
 
@@ -85,10 +118,24 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     *   Gravity turn pitching over based on a power-law curve.
     *   Drag is calculated using estimated CdA (Drag Coefficient * Area) derived from mass.
     *   Thrust and ISP vary dynamically with atmospheric pressure.
-3.  **Binary Search:** It runs the simulation multiple times, adjusting the "simulated payload mass" until the Available Δv matches the Required Δv, finding the limit of your rocket's capacity.
+3.  **Binary Search:** It runs the simulation multiple times, adjusting the "simulated payload mass" until the Available Delta-V matches the Required Delta-V, finding the limit of your rocket's capacity.
 
 ## ⚠️ Notes
 
-*   **SSTO support:**
-    *   **Pure rocket SSTOs** (e.g., Nerv + Liquid Fuel) are fully supported.
-    *   **Air-breathing / hybrid SSTOs** (e.g., RAPIER) should be used as reference only, as propellants like IntakeAir are not stored in tanks and are not included in the calculation.
+*   **SSTO Support:**
+    *   **Pure Rocket SSTO:** Theoretically well-supported.
+    *   **Air-breathing / Hybrid SSTO:** (e.g., RAPIER) Use for reference only, as propellants like IntakeAir (not stored in tanks) are not included in the calculation.
+
+*   **Calculation Accuracy:**
+    *   Actual launches are affected by factors like gravity turn speed vs. start height, flight trajectory, vessel aerodynamics, and piloting style. Therefore, the calculated payload is a theoretical estimate.
+    *   If actual flight results deviate from calculations, try optimizing gravity turn speed, turn height, and related parameters in MechJeb (MJ) to get closer to theoretical performance.
+
+*   **Compatibility & Testing:**
+
+    *   The current version has NOT been systematically tested with **FAR (Ferram Aerospace Research)**, **RSS (Real Solar System)**, **Principia**, or **Rescale** mods.
+    *   You are welcome to test in these environments and provide feedback or suggestions.
+
+*   **Development Status:**
+
+    *   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every "aerodynamic disaster".
+    *   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true "Chief Engineer" together.
