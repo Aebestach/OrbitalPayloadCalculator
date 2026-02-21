@@ -13,10 +13,13 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle ButtonStyle { get; private set; }
         public GUIStyle ToggleStyle { get; private set; }
         public GUIStyle CenteredHeaderStyle { get; private set; }
+        public GUIStyle ActiveButtonStyle { get; private set; }
         public GUIStyle PanelStyle { get; private set; }
+        public GUIStyle SectionStyle { get; private set; }
 
         private int _fontSize = -1;
         private Texture2D _panelBgTexture;
+        private Texture2D _sectionBgTexture;
 
         public void RebuildIfNeeded(int fontSize)
         {
@@ -38,7 +41,7 @@ namespace OrbitalPayloadCalculator.UI
         private void BuildStyles(int fontSize)
         {
             var skin = HighLogic.Skin ?? GUI.skin;
-            WindowStyle = new GUIStyle(skin.window) { fontSize = fontSize };
+            WindowStyle = new GUIStyle(skin.window) { fontSize = fontSize + 2 };
             LabelStyle = new GUIStyle(skin.label) { fontSize = fontSize };
             HeaderStyle = new GUIStyle(skin.label)
             {
@@ -58,6 +61,15 @@ namespace OrbitalPayloadCalculator.UI
             };
             FieldStyle = new GUIStyle(skin.textField) { fontSize = fontSize };
             ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize };
+            var activeColor = new Color(0.4f, 0.85f, 1f);
+            ActiveButtonStyle = new GUIStyle(skin.button)
+            {
+                fontSize = fontSize,
+                normal = { textColor = activeColor },
+                hover = { textColor = activeColor },
+                active = { textColor = activeColor },
+                focused = { textColor = activeColor }
+            };
             ToggleStyle = new GUIStyle(skin.toggle) { fontSize = fontSize };
 
             _panelBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
@@ -70,6 +82,17 @@ namespace OrbitalPayloadCalculator.UI
                 padding = new RectOffset(8, 8, 6, 6),
                 margin = new RectOffset(0, 0, 0, 0)
             };
+
+            _sectionBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
+            _sectionBgTexture.SetPixel(0, 0, new Color(1f, 1f, 1f, 0.06f));
+            _sectionBgTexture.Apply(false, false);
+
+            SectionStyle = new GUIStyle
+            {
+                normal = { background = _sectionBgTexture },
+                padding = new RectOffset(6, 6, 4, 4),
+                margin = new RectOffset(0, 0, 2, 2)
+            };
         }
 
         private void DisposeStyles()
@@ -81,13 +104,21 @@ namespace OrbitalPayloadCalculator.UI
             SmallLabelStyle = null;
             FieldStyle = null;
             ButtonStyle = null;
+            ActiveButtonStyle = null;
             ToggleStyle = null;
             PanelStyle = null;
+            SectionStyle = null;
 
             if (_panelBgTexture != null)
             {
                 UnityEngine.Object.Destroy(_panelBgTexture);
                 _panelBgTexture = null;
+            }
+
+            if (_sectionBgTexture != null)
+            {
+                UnityEngine.Object.Destroy(_sectionBgTexture);
+                _sectionBgTexture = null;
             }
         }
     }

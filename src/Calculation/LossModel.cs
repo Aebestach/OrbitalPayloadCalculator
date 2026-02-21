@@ -41,7 +41,7 @@ namespace OrbitalPayloadCalculator.Calculation
                               stats.WetMassTons > 0d && stats.DryMassTons > 0d;
 
                 if (canSim)
-                    SimulateAscent(body, stats, target.TargetOrbitAltitudeMeters,
+                    SimulateAscent(body, stats, target.PeriapsisAltitudeMeters,
                         target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
                         estimate, extraPayloadTons);
                 else

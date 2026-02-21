@@ -49,6 +49,10 @@ namespace OrbitalPayloadCalculator.Calculation
         public double EstimatedPayloadTons;
         public double OrbitalSpeed;
         public double RotationDv;
+        public double PeriapsisAltitudeMeters;
+        public double ApoapsisAltitudeMeters;
+        public double Eccentricity;
+        public double InclinationDegrees;
         public LossEstimate Losses;
         public int PayloadCutoffStage = -1;
         public List<StageInfo> ActiveStages = new List<StageInfo>();
@@ -80,20 +84,30 @@ namespace OrbitalPayloadCalculator.Calculation
 
             var body = orbitTargets.LaunchBody;
             orbitTargets.ClampLatitude();
-            orbitTargets.ClampAltitude();
+            var altError = orbitTargets.ClampAltitudes();
             orbitTargets.ClampInclination();
-            orbitTargets.ClampEccentricity();
 
-            var r = body.Radius + orbitTargets.TargetOrbitAltitudeMeters;
-            var mu = body.gravParameter;
-            var orbitalSpeed = Math.Sqrt(mu / r);
-
-            if (orbitTargets.UseEccentricity)
+            if (altError != null)
             {
-                var e = orbitTargets.TargetEccentricity;
-                var a = r / (1.0d - e);
-                orbitalSpeed = Math.Sqrt(mu * ((2.0d / r) - (1.0d / a)));
+                result.ErrorMessageKey = altError;
+                return result;
             }
+
+            var absLat = Math.Abs(orbitTargets.LaunchLatitudeDegrees);
+            var effectiveInc = orbitTargets.TargetInclinationDegrees;
+            if (effectiveInc > 90.0d) effectiveInc = 180.0d - effectiveInc;
+            if (effectiveInc + 0.01d < absLat)
+            {
+                result.ErrorMessageKey = "#LOC_OPC_InclinationBelowLatitude";
+                return result;
+            }
+
+            var rPe = body.Radius + orbitTargets.PeriapsisAltitudeMeters;
+            var rAp = body.Radius + orbitTargets.ApoapsisAltitudeMeters;
+            var mu = body.gravParameter;
+            var a = (rPe + rAp) * 0.5d;
+            var eccentricity = a > 0.0d ? (rAp - rPe) / (rAp + rPe) : 0.0d;
+            var orbitalSpeed = Math.Sqrt(mu * ((2.0d / rPe) - (1.0d / a)));
 
             var inertialDv = orbitalSpeed;
             if (body.rotationPeriod > 0.0d)
@@ -146,6 +160,10 @@ namespace OrbitalPayloadCalculator.Calculation
             result.EstimatedPayloadTons = payloadGuess;
             result.OrbitalSpeed = orbitalSpeed;
             result.RotationDv = orbitalSpeed - inertialDv;
+            result.PeriapsisAltitudeMeters = orbitTargets.PeriapsisAltitudeMeters;
+            result.ApoapsisAltitudeMeters = orbitTargets.ApoapsisAltitudeMeters;
+            result.Eccentricity = eccentricity;
+            result.InclinationDegrees = orbitTargets.TargetInclinationDegrees;
             result.Losses = losses;
             result.ActiveStages = activeStages;
             return result;
