@@ -48,6 +48,7 @@ namespace OrbitalPayloadCalculator.Calculation
         public double AvailableDvVacuum;
         public double EstimatedPayloadTons;
         public double OrbitalSpeed;
+        public double RotationDv;
         public LossEstimate Losses;
         public int PayloadCutoffStage = -1;
         public List<StageInfo> ActiveStages = new List<StageInfo>();
@@ -78,6 +79,7 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             var body = orbitTargets.LaunchBody;
+            orbitTargets.ClampLatitude();
             orbitTargets.ClampAltitude();
             orbitTargets.ClampInclination();
             orbitTargets.ClampEccentricity();
@@ -93,12 +95,18 @@ namespace OrbitalPayloadCalculator.Calculation
                 orbitalSpeed = Math.Sqrt(mu * ((2.0d / r) - (1.0d / a)));
             }
 
-            var rotationAssist = 0.0d;
+            var inertialDv = orbitalSpeed;
             if (body.rotationPeriod > 0.0d)
             {
                 var equatorialSpeed = 2.0d * Math.PI * body.Radius / body.rotationPeriod;
-                var inclinationPenalty = Math.Cos(orbitTargets.TargetInclinationDegrees * Math.PI / 180.0d);
-                rotationAssist = Math.Max(0.0d, equatorialSpeed * inclinationPenalty);
+                var latRad = orbitTargets.LaunchLatitudeDegrees * Math.PI / 180.0d;
+                var incRad = orbitTargets.TargetInclinationDegrees * Math.PI / 180.0d;
+                var surfaceSpeed = equatorialSpeed * Math.Abs(Math.Cos(latRad));
+                var cosInc = Math.Cos(incRad);
+                var dvSq = orbitalSpeed * orbitalSpeed
+                           - 2.0d * orbitalSpeed * equatorialSpeed * cosInc
+                           + surfaceSpeed * surfaceSpeed;
+                inertialDv = Math.Sqrt(Math.Max(0.0d, dvSq));
             }
 
             var activeStages = new List<StageInfo>();
@@ -128,7 +136,7 @@ namespace OrbitalPayloadCalculator.Calculation
             {
                 var extraForLoss = payloadCutoffStage < 0 ? payloadGuess : 0.0d;
                 losses = LossModel.Estimate(body, orbitTargets, lossConfig, stats, extraForLoss);
-                requiredDv = Math.Max(0.0d, orbitalSpeed - rotationAssist + losses.TotalDv);
+                requiredDv = Math.Max(0.0d, inertialDv + losses.TotalDv);
                 payloadGuess = EstimatePayload(stats, body, requiredDv, payloadCutoffStage, maxPropStageNum);
             }
 
@@ -137,6 +145,7 @@ namespace OrbitalPayloadCalculator.Calculation
             result.AvailableDv = totalDv;
             result.EstimatedPayloadTons = payloadGuess;
             result.OrbitalSpeed = orbitalSpeed;
+            result.RotationDv = orbitalSpeed - inertialDv;
             result.Losses = losses;
             result.ActiveStages = activeStages;
             return result;

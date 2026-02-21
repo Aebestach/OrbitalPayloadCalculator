@@ -26,6 +26,7 @@ namespace OrbitalPayloadCalculator.UI
 
         private Rect _windowRect = new Rect(220, 120, 780, 100);
 
+        private string _latitudeInput = "0";
         private string _altitudeInput = "80000";
         private string _inclinationInput = "0";
         private string _eccentricityInput = "0";
@@ -363,6 +364,8 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(4);
             DrawLabeledField(Loc("#LOC_OPC_TargetInclination"), ref _inclinationInput);
             GUILayout.Space(4);
+            DrawLatitudeRow();
+            GUILayout.Space(4);
 
             _targets.UseEccentricity = GUILayout.Toggle(_targets.UseEccentricity, Loc("#LOC_OPC_UseEccentricity"), _styleManager.ToggleStyle);
             if (_targets.UseEccentricity)
@@ -405,6 +408,8 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")} (Sea): {FormatNum(_lastResult.AvailableDvSeaLevel)} m/s", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")} (Vac): {FormatNum(_lastResult.AvailableDvVacuum)} m/s", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_OrbitalSpeed")}: {FormatNum(_lastResult.OrbitalSpeed)} m/s", _styleManager.LabelStyle);
+            var rotSign = _lastResult.RotationDv >= 0.0d ? "+" : "";
+            GUILayout.Label($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatNum(_lastResult.RotationDv)} m/s", _styleManager.LabelStyle);
 
             GUILayout.Space(4);
             if (_payloadCutoffStage >= 0)
@@ -487,6 +492,13 @@ namespace OrbitalPayloadCalculator.UI
                 return;
             }
 
+            if (!TryParse(_latitudeInput, out var latitude))
+            {
+                _lastResult = new PayloadCalculationResult { ErrorMessageKey = "#LOC_OPC_InvalidLatitude" };
+                return;
+            }
+
+            _targets.LaunchLatitudeDegrees = latitude;
             _targets.TargetOrbitAltitudeMeters = altitude;
             _targets.TargetInclinationDegrees = inclination;
             if (_targets.UseEccentricity && TryParse(_eccentricityInput, out var eccentricity))
@@ -517,6 +529,24 @@ namespace OrbitalPayloadCalculator.UI
             enabled = GUILayout.Toggle(enabled, label, _styleManager.ToggleStyle, GUILayout.Width(260));
             input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(100));
             GUILayout.Label("m/s", _styleManager.LabelStyle, GUILayout.Width(40));
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawLatitudeRow()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Loc("#LOC_OPC_LaunchLatitude"), _styleManager.LabelStyle, GUILayout.Width(260));
+            _latitudeInput = GUILayout.TextField(_latitudeInput, _styleManager.FieldStyle, GUILayout.Width(100));
+
+            if (!_isEditor && FlightGlobals.ActiveVessel != null)
+            {
+                if (GUILayout.Button(Loc("#LOC_OPC_AutoLatitude"), _styleManager.ButtonStyle, GUILayout.Width(50)))
+                {
+                    _latitudeInput = FlightGlobals.ActiveVessel.latitude
+                        .ToString("F2", CultureInfo.InvariantCulture);
+                }
+            }
+
             GUILayout.EndHorizontal();
         }
 

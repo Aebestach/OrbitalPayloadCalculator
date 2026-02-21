@@ -42,9 +42,11 @@ namespace OrbitalPayloadCalculator.Calculation
 
                 if (canSim)
                     SimulateAscent(body, stats, target.TargetOrbitAltitudeMeters,
-                        target.TargetInclinationDegrees, estimate, extraPayloadTons);
+                        target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
+                        estimate, extraPayloadTons);
                 else
-                    FallbackEstimate(body, target.TargetInclinationDegrees, estimate);
+                    FallbackEstimate(body, target.TargetInclinationDegrees,
+                        target.LaunchLatitudeDegrees, estimate);
             }
 
             if (config.OverrideGravityLoss)
@@ -74,8 +76,8 @@ namespace OrbitalPayloadCalculator.Calculation
         /// actual part geometry is unavailable in the editor.
         /// </summary>
         private static void SimulateAscent(CelestialBody body, VesselStats stats,
-            double targetAltM, double inclinationDeg, LossEstimate result,
-            double extraPayloadTons = 0.0d)
+            double targetAltM, double inclinationDeg, double launchLatDeg,
+            LossEstimate result, double extraPayloadTons = 0.0d)
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
@@ -173,7 +175,9 @@ namespace OrbitalPayloadCalculator.Calculation
             result.GravityLossDv = gravityLoss;
             result.AtmosphericLossDv = dragLoss;
 
-            double incFactor = Math.Max(0d, Math.Min(1d, inclinationDeg / 90.0d));
+            double rawIncFactor = Math.Max(0d, Math.Min(1d, inclinationDeg / 90.0d));
+            double latScale = Math.Abs(Math.Cos(launchLatDeg * Math.PI / 180.0d));
+            double incFactor = rawIncFactor * latScale;
             if (body != null && body.atmosphere)
             {
                 double pressureScale = Math.Max(0.01d, body.atmospherePressureSeaLevel / OneAtmKPa);
@@ -193,7 +197,7 @@ namespace OrbitalPayloadCalculator.Calculation
         /// Uses simple empirical formulas.
         /// </summary>
         private static void FallbackEstimate(CelestialBody body, double inclinationDeg,
-            LossEstimate result)
+            double launchLatDeg, LossEstimate result)
         {
             double surfGee = body.GeeASL;
             result.GravityLossDv = Mathf.Clamp(
@@ -207,7 +211,8 @@ namespace OrbitalPayloadCalculator.Calculation
                     80f + 100f * pressureScale, 50f, 800f);
             }
 
-            double incFactor = 0.2d * Math.Min(1.0d, inclinationDeg / 90.0d);
+            double latScale = Math.Abs(Math.Cos(launchLatDeg * Math.PI / 180.0d));
+            double incFactor = 0.2d * Math.Min(1.0d, inclinationDeg / 90.0d) * latScale;
             result.AttitudeLossDv = 35.0d + 55.0d * incFactor;
         }
     }

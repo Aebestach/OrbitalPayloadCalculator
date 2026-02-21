@@ -5,10 +5,17 @@ namespace OrbitalPayloadCalculator.Calculation
     internal sealed class OrbitTargets
     {
         public CelestialBody LaunchBody { get; set; }
+        public double LaunchLatitudeDegrees { get; set; } = 0.0d;
         public double TargetOrbitAltitudeMeters { get; set; } = 80000.0d;
         public double TargetInclinationDegrees { get; set; } = 0.0d;
         public bool UseEccentricity { get; set; }
         public double TargetEccentricity { get; set; } = 0.0d;
+
+        public double ClampLatitude()
+        {
+            LaunchLatitudeDegrees = Mathf.Clamp((float)LaunchLatitudeDegrees, -90.0f, 90.0f);
+            return LaunchLatitudeDegrees;
+        }
 
         public double ClampAltitude()
         {
