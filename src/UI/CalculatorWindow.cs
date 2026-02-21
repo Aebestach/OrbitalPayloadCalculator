@@ -37,6 +37,10 @@ namespace OrbitalPayloadCalculator.UI
         private static readonly string[] AltitudeUnitLabels = { "m", "km", "Mm" };
         private static readonly double[] AltitudeUnitScales = { 1.0d, 1e3d, 1e6d };
         private string _fontSizeInput;
+        private string _hotkeyKeyInput;
+        private bool _hotkeyAltInput;
+        private bool _hotkeyCtrlInput;
+        private bool _hotkeyShiftInput;
         private string _manualGravityLossInput = "0";
         private string _manualAtmoLossInput = "0";
         private string _manualAttitudeLossInput = "0";
@@ -61,6 +65,7 @@ namespace OrbitalPayloadCalculator.UI
 
         private int _lastAppliedFontSize = -1;
         private bool _needsHeightReset;
+        private bool _showSettingsPanel;
 
         private bool _disposed;
         private bool _visible;
@@ -88,6 +93,10 @@ namespace OrbitalPayloadCalculator.UI
             _vesselService = vesselService;
             _isEditor = isEditor;
             _fontSizeInput = _settings.FontSize.ToString(CultureInfo.InvariantCulture);
+            _hotkeyKeyInput = _settings.HotkeyKey.ToString();
+            _hotkeyAltInput = _settings.HotkeyAlt;
+            _hotkeyCtrlInput = _settings.HotkeyCtrl;
+            _hotkeyShiftInput = _settings.HotkeyShift;
             RefreshBodies();
             ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
         }
@@ -95,6 +104,9 @@ namespace OrbitalPayloadCalculator.UI
         public void OnGUI()
         {
             if (!Visible || _disposed) return;
+
+            var savedSkin = GUI.skin;
+            GUI.skin = HighLogic.Skin ?? GUI.skin;
 
             _styleManager.RebuildIfNeeded(_settings.FontSize);
 
@@ -141,6 +153,8 @@ namespace OrbitalPayloadCalculator.UI
                     _stagePopupNeedsCenter = false;
                 }
             }
+
+            GUI.skin = savedSkin;
         }
 
         public void Dispose()
@@ -160,7 +174,7 @@ namespace OrbitalPayloadCalculator.UI
         {
             GUILayout.BeginVertical();
             GUILayout.Space(6);
-            DrawFontSizeRow();
+            DrawGuiSettingsPanel();
             GUILayout.Space(6);
 
             GUILayout.BeginHorizontal();
@@ -182,25 +196,60 @@ namespace OrbitalPayloadCalculator.UI
             GUI.DragWindow(new Rect(0, 0, 10000, 30));
         }
 
-        private void DrawFontSizeRow()
+        private void DrawGuiSettingsPanel()
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc("#LOC_OPC_FontSize"), _styleManager.LabelStyle, GUILayout.Width(120));
-            _fontSizeInput = GUILayout.TextField(_fontSizeInput, _styleManager.FieldStyle, GUILayout.Width(50));
-            GUILayout.Label("(13-20)", _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle, GUILayout.Width(60));
+            var toggleLabel = _showSettingsPanel
+                ? $"\u25bc {Loc("#LOC_OPC_GuiSettings")}"
+                : $"\u25b6 {Loc("#LOC_OPC_GuiSettings")}";
 
-            if (GUILayout.Button(Loc("#LOC_OPC_Save"), _styleManager.ButtonStyle, GUILayout.Width(60)))
+            if (GUILayout.Button(toggleLabel, _styleManager.ButtonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(28)))
             {
-                if (int.TryParse(_fontSizeInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    var clamped = Mathf.Clamp(parsed, 13, 20);
-                    _fontSizeInput = clamped.ToString(CultureInfo.InvariantCulture);
-                    _settings.SetFontSize(clamped);
-                }
+                _showSettingsPanel = !_showSettingsPanel;
+                InvalidateWindowHeight();
             }
 
+            if (!_showSettingsPanel) return;
+
+            GUILayout.BeginVertical(_styleManager.PanelStyle);
+
+            var fs = _settings.FontSize;
+            var labelWidth = fs * 12f;
+            var fieldWidth = fs * 5f;
+            var toggleMinWidth = fs * 4f;
+            var rowHeight = fs + 10f;
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            GUILayout.Label($"{Loc("#LOC_OPC_FontSize")} [13-20]", _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            _fontSizeInput = GUILayout.TextField(_fontSizeInput, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            GUILayout.Label(Loc("#LOC_OPC_HotkeyKey"), _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            _hotkeyKeyInput = GUILayout.TextField(_hotkeyKeyInput, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            GUILayout.Label(Loc("#LOC_OPC_HotkeyModifiers"), _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            _hotkeyAltInput = GUILayout.Toggle(_hotkeyAltInput, "Alt", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
+            _hotkeyCtrlInput = GUILayout.Toggle(_hotkeyCtrlInput, "Ctrl", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
+            _hotkeyShiftInput = GUILayout.Toggle(_hotkeyShiftInput, "Shift", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            GUILayout.Label($"{Loc("#LOC_OPC_CurrentHotkey")} {BuildHotkeyLabel(_hotkeyKeyInput, _hotkeyAltInput, _hotkeyCtrlInput, _hotkeyShiftInput)}", _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
+
+            GUILayout.Space(6);
+            if (GUILayout.Button(Loc("#LOC_OPC_ApplySettings"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
+            {
+                ApplyGuiSettings();
+            }
+
+            GUILayout.EndVertical();
         }
 
         private void DrawBodyRow()
@@ -243,9 +292,8 @@ namespace OrbitalPayloadCalculator.UI
             {
                 var bodyName = _bodies[i].displayName.LocalizeBodyName();
                 var display = Truncate(bodyName, 26);
-                var label = i == _bodyIndex ? $">> {display} <<" : display;
 
-                if (GUILayout.Button(label, _styleManager.ButtonStyle))
+                if (GUILayout.Button(display, i == _bodyIndex ? _styleManager.SelectedButtonStyle : _styleManager.ButtonStyle))
                 {
                     _bodyIndex = i;
                     _targets.LaunchBody = _bodies[_bodyIndex];
@@ -377,11 +425,9 @@ namespace OrbitalPayloadCalculator.UI
             {
                 var name = Truncate(candidates[i].vesselName, 22);
                 var situation = FormatSituation(candidates[i].situation);
-                var label = i == currentIdx
-                    ? $">> {name} ({situation}) <<"
-                    : $"{name} ({situation})";
+                var label = $"{name} ({situation})";
 
-                if (GUILayout.Button(label, _styleManager.ButtonStyle))
+                if (GUILayout.Button(label, i == currentIdx ? _styleManager.SelectedButtonStyle : _styleManager.ButtonStyle))
                 {
                     _vesselService.SetSelectedFlightIndex(i);
                     _showVesselPopup = false;
@@ -430,18 +476,22 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawLossPanel()
         {
-            _lossConfig.AutoEstimate = GUILayout.Toggle(_lossConfig.AutoEstimate, Loc("#LOC_OPC_AutoLoss"), _styleManager.ToggleStyle);
-            GUILayout.Space(4);
-            _lossConfig.AggressiveEstimate = GUILayout.Toggle(_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle);
+            var fs = _settings.FontSize;
+            var rowHeight = fs + 10f;
+            var rowSpacing = Mathf.Max(6f, fs * 0.4f);
 
-            GUILayout.Space(8);
+            _lossConfig.AutoEstimate = GUILayout.Toggle(_lossConfig.AutoEstimate, Loc("#LOC_OPC_AutoLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight));
+            GUILayout.Space(rowSpacing);
+            _lossConfig.AggressiveEstimate = GUILayout.Toggle(_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight));
+
+            GUILayout.Space(rowSpacing);
 
             DrawOverrideRow(Loc("#LOC_OPC_GravityLoss"), ref _lossConfig.OverrideGravityLoss, ref _manualGravityLossInput);
-            GUILayout.Space(8);
+            GUILayout.Space(rowSpacing);
             DrawOverrideRow(Loc("#LOC_OPC_AtmosphereLoss"), ref _lossConfig.OverrideAtmosphericLoss, ref _manualAtmoLossInput);
-            GUILayout.Space(8);
+            GUILayout.Space(rowSpacing);
             DrawOverrideRow(Loc("#LOC_OPC_AttitudeLoss"), ref _lossConfig.OverrideAttitudeLoss, ref _manualAttitudeLossInput);
-            GUILayout.Space(8);
+            GUILayout.Space(rowSpacing);
         }
 
         private void DrawResultPanel()
@@ -661,18 +711,94 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawOverrideRow(string label, ref bool enabled, ref string input)
         {
-            GUILayout.BeginHorizontal();
-            enabled = GUILayout.Toggle(enabled, label, _styleManager.ToggleStyle, GUILayout.Width(260));
-            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(100));
-            GUILayout.Label("m/s", _styleManager.LabelStyle, GUILayout.Width(40));
+            var fs = _settings.FontSize;
+            var rowHeight = fs + 10f;
+            var toggleWidth = fs * 10f;
+            var fieldWidth = fs * 5f;
+            var unitWidth = fs * 3f;
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            enabled = GUILayout.Toggle(enabled, label, _styleManager.ToggleStyle, GUILayout.Width(toggleWidth), GUILayout.Height(rowHeight));
+            GUILayout.Space(4);
+            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(fieldWidth), GUILayout.Height(rowHeight));
+            GUILayout.Space(4);
+            GUILayout.Label("m/s", _styleManager.LabelStyle, GUILayout.Width(unitWidth), GUILayout.Height(rowHeight));
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+        }
+
+        private void ApplyGuiSettings()
+        {
+            var fontSize = _settings.FontSize;
+            if (int.TryParse(_fontSizeInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+                fontSize = Mathf.Clamp(parsed, 13, 20);
+            _fontSizeInput = fontSize.ToString(CultureInfo.InvariantCulture);
+            _settings.SetFontSize(fontSize);
+
+            if (!TryParseKeyCode(_hotkeyKeyInput, out var key))
+            {
+                key = _settings.HotkeyKey;
+                _hotkeyKeyInput = key.ToString();
+            }
+
+            _settings.SetHotkey(key, _hotkeyAltInput, _hotkeyCtrlInput, _hotkeyShiftInput);
+        }
+
+        private static bool TryParseKeyCode(string input, out KeyCode key)
+        {
+            key = KeyCode.None;
+            if (string.IsNullOrWhiteSpace(input))
+                return false;
+
+            var text = input.Trim();
+            if (text.Length == 1)
+            {
+                var ch = char.ToUpperInvariant(text[0]);
+                if (ch >= 'A' && ch <= 'Z')
+                {
+                    key = (KeyCode)Enum.Parse(typeof(KeyCode), ch.ToString());
+                    return true;
+                }
+
+                if (ch >= '0' && ch <= '9')
+                {
+                    key = (KeyCode)Enum.Parse(typeof(KeyCode), $"Alpha{ch}");
+                    return true;
+                }
+            }
+
+            if (Enum.TryParse(text, true, out KeyCode parsed) && parsed != KeyCode.None)
+            {
+                key = parsed;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildHotkeyLabel(string inputKey, bool alt, bool ctrl, bool shift)
+        {
+            if (!TryParseKeyCode(inputKey, out var key))
+                key = KeyCode.None;
+
+            var parts = new List<string>();
+            if (alt) parts.Add("Alt");
+            if (ctrl) parts.Add("Ctrl");
+            if (shift) parts.Add("Shift");
+            if (key != KeyCode.None) parts.Add(key.ToString());
+            if (parts.Count == 0) return "-";
+            return string.Join("+", parts);
         }
 
         private void DrawLatitudeRow()
         {
+            var fs = _settings.FontSize;
+            var labelWidth = fs * 14f;
+            var fieldWidth = fs * 5f;
+
             GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc("#LOC_OPC_LaunchLatitude"), _styleManager.LabelStyle, GUILayout.Width(260));
-            _latitudeInput = GUILayout.TextField(_latitudeInput, _styleManager.FieldStyle, GUILayout.Width(100));
+            GUILayout.Label(Loc("#LOC_OPC_LaunchLatitude"), _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            _latitudeInput = GUILayout.TextField(_latitudeInput, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
 
             if (!_isEditor && FlightGlobals.ActiveVessel != null)
             {
@@ -688,9 +814,14 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawLabeledField(string label, ref string input)
         {
+            var fs = _settings.FontSize;
+            var labelWidth = fs * 14f;
+            var fieldWidth = fs * 5f;
+
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _styleManager.LabelStyle, GUILayout.Width(260));
-            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(100));
+            GUILayout.Label(label, _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
         }
 

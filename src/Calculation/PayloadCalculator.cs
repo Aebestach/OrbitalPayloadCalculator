@@ -156,6 +156,12 @@ namespace OrbitalPayloadCalculator.Calculation
                 result.AvailableDvVacuum = ComputeSimpleDvWithMode(stats, body, useSeaLevelIsp: false);
             }
 
+            if (totalDv <= 0.0d)
+            {
+                result.ErrorMessageKey = "#LOC_OPC_ZeroDv";
+                return result;
+            }
+
             double payloadGuess = 0.0d;
             LossEstimate losses = null;
             double requiredDv = 0.0d;

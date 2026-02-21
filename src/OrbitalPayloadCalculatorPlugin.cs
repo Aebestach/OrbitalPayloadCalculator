@@ -78,6 +78,7 @@ namespace OrbitalPayloadCalculator
 
         private ApplicationLauncherButton _button;
         private Texture2D _iconTexture;
+        private bool _iconFromGameDatabase;
         private bool _buttonRegistered;
         private bool _eventsRegistered;
 
@@ -131,16 +132,25 @@ namespace OrbitalPayloadCalculator
             UnregisterAppLauncher();
             _window.Dispose();
 
-            if (_iconTexture != null)
+            if (_iconTexture != null && !_iconFromGameDatabase)
             {
                 UnityEngine.Object.Destroy(_iconTexture);
-                _iconTexture = null;
             }
+
+            _iconTexture = null;
+            _iconFromGameDatabase = false;
         }
 
         private bool ShouldToggleWithHotkey()
         {
-            return Input.GetKey(KeyCode.LeftAlt) && Input.GetKeyDown(KeyCode.P);
+            if (_settings.HotkeyAlt && !(Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)))
+                return false;
+            if (_settings.HotkeyCtrl && !(Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+                return false;
+            if (_settings.HotkeyShift && !(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                return false;
+
+            return _settings.HotkeyKey != KeyCode.None && Input.GetKeyDown(_settings.HotkeyKey);
         }
 
         private void OnAppLauncherReady()
@@ -234,14 +244,28 @@ namespace OrbitalPayloadCalculator
 
         private void CreateIcon()
         {
+            var texture = GameDatabase.Instance != null
+                ? GameDatabase.Instance.GetTexture("OrbitalPayloadCalculator/Textures/icon", false)
+                : null;
+
+            if (texture != null)
+            {
+                _iconTexture = texture;
+                _iconFromGameDatabase = true;
+                _iconTexture.wrapMode = TextureWrapMode.Clamp;
+                _iconTexture.filterMode = FilterMode.Bilinear;
+                return;
+            }
+
+            _iconFromGameDatabase = false;
             _iconTexture = new Texture2D(38, 38, TextureFormat.ARGB32, false)
             {
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear
             };
 
-            var background = new Color32(34, 52, 74, 255);
-            var accent = new Color32(110, 195, 255, 255);
+            var background = new Color32(255, 255, 255, 255);
+            var accent = new Color32(255, 255, 255, 255);
             var pixels = new Color32[38 * 38];
 
             for (var y = 0; y < 38; y++)

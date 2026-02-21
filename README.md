@@ -86,3 +86,9 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     *   Drag is calculated using estimated CdA (Drag Coefficient * Area) derived from mass.
     *   Thrust and ISP vary dynamically with atmospheric pressure.
 3.  **Binary Search:** It runs the simulation multiple times, adjusting the "simulated payload mass" until the Available Δv matches the Required Δv, finding the limit of your rocket's capacity.
+
+## ⚠️ Notes
+
+*   **SSTO support:**
+    *   **Pure rocket SSTOs** (e.g., Nerv + Liquid Fuel) are fully supported.
+    *   **Air-breathing / hybrid SSTOs** (e.g., RAPIER) should be used as reference only, as propellants like IntakeAir are not stored in tanks and are not included in the calculation.

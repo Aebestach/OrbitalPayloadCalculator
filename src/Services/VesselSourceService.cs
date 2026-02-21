@@ -162,6 +162,7 @@ namespace OrbitalPayloadCalculator.Services
             foreach (var part in parts)
             {
                 if (part == null) continue;
+                if (IsLaunchClamp(part)) continue;
 
                 var stageNum = part.inverseStage;
                 if (!stageMap.TryGetValue(stageNum, out var si))
@@ -215,6 +216,7 @@ namespace OrbitalPayloadCalculator.Services
             foreach (var part in parts)
             {
                 if (part == null) continue;
+                if (IsLaunchClamp(part)) continue;
                 var stageNum = part.inverseStage;
                 if (!stageMap.TryGetValue(stageNum, out var si)) continue;
 
@@ -248,6 +250,12 @@ namespace OrbitalPayloadCalculator.Services
             stats.SeaLevelIspSeconds = totalThrust > 0 ? totalWeightedSea / totalThrust : 0;
 
             return stats;
+        }
+
+        private static bool IsLaunchClamp(Part part)
+        {
+            return part.Modules.Contains("LaunchClamp")
+                || part.Modules.Contains("ModuleLaunchClamp");
         }
     }
 }
