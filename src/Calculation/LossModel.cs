@@ -9,12 +9,10 @@ namespace OrbitalPayloadCalculator.Calculation
         public bool OverrideGravityLoss;
         public bool OverrideAtmosphericLoss;
         public bool OverrideAttitudeLoss;
-        public bool OverrideGravityTurnCorrection;
 
         public double ManualGravityLossDv;
         public double ManualAtmosphericLossDv;
         public double ManualAttitudeLossDv;
-        public double ManualGravityTurnCorrectionDv;
     }
 
     internal sealed class LossEstimate
@@ -22,7 +20,6 @@ namespace OrbitalPayloadCalculator.Calculation
         public double GravityLossDv;
         public double AtmosphericLossDv;
         public double AttitudeLossDv;
-        public double GravityTurnCorrectionDv;
         public double TotalDv;
     }
 
@@ -56,14 +53,11 @@ namespace OrbitalPayloadCalculator.Calculation
                 estimate.AtmosphericLossDv = config.ManualAtmosphericLossDv;
             if (config.OverrideAttitudeLoss)
                 estimate.AttitudeLossDv = config.ManualAttitudeLossDv;
-            if (config.OverrideGravityTurnCorrection)
-                estimate.GravityTurnCorrectionDv = config.ManualGravityTurnCorrectionDv;
 
             estimate.TotalDv =
                 estimate.GravityLossDv +
                 estimate.AtmosphericLossDv +
-                estimate.AttitudeLossDv +
-                estimate.GravityTurnCorrectionDv;
+                estimate.AttitudeLossDv;
 
             return estimate;
         }
@@ -192,7 +186,6 @@ namespace OrbitalPayloadCalculator.Calculation
                 double geeScale = Math.Max(0.05d, body.GeeASL);
                 result.AttitudeLossDv = (3.0d + 5.0d * geeScale) * (1.0d + incFactor);
             }
-            result.GravityTurnCorrectionDv = 0d;
         }
 
         /// <summary>
@@ -216,7 +209,6 @@ namespace OrbitalPayloadCalculator.Calculation
 
             double incFactor = 0.2d * Math.Min(1.0d, inclinationDeg / 90.0d);
             result.AttitudeLossDv = 35.0d + 55.0d * incFactor;
-            result.GravityTurnCorrectionDv = 0d;
         }
     }
 }
