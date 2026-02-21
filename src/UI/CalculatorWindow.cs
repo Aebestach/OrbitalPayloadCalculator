@@ -39,6 +39,8 @@ namespace OrbitalPayloadCalculator.UI
         private string _manualGravityLossInput = "0";
         private string _manualAtmoLossInput = "0";
         private string _manualAttitudeLossInput = "0";
+        private string _turnStartSpeedInput = "80";
+        private bool _lastAggressiveState;
 
         private CelestialBody[] _bodies = Array.Empty<CelestialBody>();
         private int _bodyIndex;
@@ -59,15 +61,24 @@ namespace OrbitalPayloadCalculator.UI
         private bool _stagePopupNeedsCenter;
 
         private int _lastAppliedFontSize = -1;
+        private bool _needsHeightReset;
 
+        private bool _disposed;
         private bool _visible;
         public bool Visible
         {
             get => _visible;
             set
             {
+                if (value == _visible) return;
                 if (value && !_visible)
                     _targets.LaunchBody = null;
+                if (!value)
+                {
+                    _showBodyPopup = false;
+                    _showVesselPopup = false;
+                    _showStagePopup = false;
+                }
                 _visible = value;
             }
         }
@@ -83,19 +94,25 @@ namespace OrbitalPayloadCalculator.UI
 
         public void OnGUI()
         {
-            if (!Visible) return;
+            if (!Visible || _disposed) return;
 
             _styleManager.RebuildIfNeeded(_settings.FontSize);
 
             if (_settings.FontSize != _lastAppliedFontSize)
             {
                 _lastAppliedFontSize = _settings.FontSize;
-                _windowRect = new Rect(_windowRect.x, _windowRect.y, _windowRect.width, 100);
+                _needsHeightReset = true;
                 if (_showStagePopup)
                 {
                     _stagePopupNeedsCenter = true;
                     _stagePopupRect = new Rect(Screen.width * 0.5f, Screen.height * 0.5f, 10, 10);
                 }
+            }
+
+            if (_needsHeightReset)
+            {
+                _needsHeightReset = false;
+                _windowRect = new Rect(_windowRect.x, _windowRect.y, _windowRect.width, 100);
             }
 
             _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow, Loc("#LOC_OPC_Title"), _styleManager.WindowStyle);
@@ -128,6 +145,14 @@ namespace OrbitalPayloadCalculator.UI
 
         public void Dispose()
         {
+            _disposed = true;
+            _visible = false;
+            _showBodyPopup = false;
+            _showVesselPopup = false;
+            _showStagePopup = false;
+            _lastResult = new PayloadCalculationResult();
+            _lastStats = new VesselStats();
+            _bodies = Array.Empty<CelestialBody>();
             _styleManager.Dispose();
         }
 
@@ -295,7 +320,16 @@ namespace OrbitalPayloadCalculator.UI
 
             if (_isEditor)
             {
-                GUILayout.Label(Loc("#LOC_OPC_EditorAutoRead"), _styleManager.LabelStyle);
+                var hasEditorVessel = EditorLogic.fetch != null
+                    && EditorLogic.fetch.ship != null
+                    && EditorLogic.fetch.ship.parts != null
+                    && EditorLogic.fetch.ship.parts.Count > 0;
+
+                if (hasEditorVessel)
+                    GUILayout.Label(Loc("#LOC_OPC_EditorAutoRead"), _styleManager.LabelStyle);
+                else
+                    GUILayout.Label(Loc("#LOC_OPC_EditorNoVessel"), _styleManager.WarningLabelStyle);
+
                 return;
             }
 
@@ -390,11 +424,21 @@ namespace OrbitalPayloadCalculator.UI
             DrawLabeledField(Loc("#LOC_OPC_TargetInclination"), ref _inclinationInput);
             GUILayout.Space(8);
             DrawLatitudeRow();
+            GUILayout.Space(4);
         }
 
         private void DrawLossPanel()
         {
             _lossConfig.AutoEstimate = GUILayout.Toggle(_lossConfig.AutoEstimate, Loc("#LOC_OPC_AutoLoss"), _styleManager.ToggleStyle);
+            GUILayout.Space(4);
+            _lossConfig.AggressiveEstimate = GUILayout.Toggle(_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle);
+
+            if (_lossConfig.AggressiveEstimate != _lastAggressiveState)
+            {
+                _lastAggressiveState = _lossConfig.AggressiveEstimate;
+                _turnStartSpeedInput = _lossConfig.AggressiveEstimate ? "60" : "80";
+            }
+
             GUILayout.Space(8);
 
             DrawOverrideRow(Loc("#LOC_OPC_GravityLoss"), ref _lossConfig.OverrideGravityLoss, ref _manualGravityLossInput);
@@ -402,6 +446,10 @@ namespace OrbitalPayloadCalculator.UI
             DrawOverrideRow(Loc("#LOC_OPC_AtmosphereLoss"), ref _lossConfig.OverrideAtmosphericLoss, ref _manualAtmoLossInput);
             GUILayout.Space(8);
             DrawOverrideRow(Loc("#LOC_OPC_AttitudeLoss"), ref _lossConfig.OverrideAttitudeLoss, ref _manualAttitudeLossInput);
+            GUILayout.Space(8);
+
+            DrawLabeledField(Loc("#LOC_OPC_TurnStartSpeed"), ref _turnStartSpeedInput);
+            GUILayout.Space(4);
         }
 
         private void DrawResultPanel()
@@ -413,6 +461,14 @@ namespace OrbitalPayloadCalculator.UI
                     : Loc(_lastResult.ErrorMessageKey);
                 GUILayout.Label(msg, _styleManager.LabelStyle);
                 return;
+            }
+
+            if (!string.IsNullOrEmpty(_lastResult.WarningMessageKey))
+            {
+                GUILayout.BeginVertical(_styleManager.SectionStyle);
+                GUILayout.Label(Loc(_lastResult.WarningMessageKey), _styleManager.WarningLabelStyle);
+                GUILayout.EndVertical();
+                GUILayout.Space(4);
             }
 
             GUILayout.BeginVertical(_styleManager.SectionStyle);
@@ -434,9 +490,18 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(4);
             GUILayout.BeginVertical(_styleManager.SectionStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_OrbitalSpeed")}: {FormatDv(_lastResult.OrbitalSpeed)} m/s", _styleManager.LabelStyle);
-            var rotSign = _lastResult.RotationDv >= 0.0d ? "+" : "";
-            GUILayout.Label($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatDv(_lastResult.RotationDv)} m/s", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_TotalLossDv")}: {FormatDv(_lastResult.Losses.TotalDv)} m/s", _styleManager.LabelStyle);
+
+            var rotSign = _lastResult.RotationDv >= 0.0d ? "+" : "";
+            var rotHint = _lastResult.RotationDv < -0.5d
+                ? $" ({Loc("#LOC_OPC_RotationAssist")})"
+                : _lastResult.RotationDv > 0.5d
+                    ? $" ({Loc("#LOC_OPC_RotationPenalty")})"
+                    : "";
+            GUILayout.Label($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatDv(_lastResult.RotationDv)} m/s{rotHint}", _styleManager.LabelStyle);
+
+            if (_lastResult.PlaneChangeDv > 0.5d)
+                GUILayout.Label($"{Loc("#LOC_OPC_PlaneChangeDv")}: {FormatDv(_lastResult.PlaneChangeDv)} m/s", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_RequiredDv")}: {FormatDv(_lastResult.RequiredDv)} m/s", _styleManager.LabelStyle);
             GUILayout.EndVertical();
 
@@ -489,7 +554,7 @@ namespace OrbitalPayloadCalculator.UI
                 var uiStage = Math.Max(0, _lastStats.TotalStages - stage.StageNumber);
                 GUILayout.Label(
                     $"  S{uiStage}{solidTag}: " +
-                    $"\u0394V={FormatDv(stage.DeltaV)} m/s  " +
+                    $"Delta-V={FormatDv(stage.DeltaV)} m/s  " +
                     $"Isp={FormatNum(stage.EffectiveIspUsed)}s ({FormatNum(stage.SeaLevelIsp)}/{FormatNum(stage.VacuumIsp)})",
                     _styleManager.LabelStyle);
                 GUILayout.Label(
@@ -511,6 +576,7 @@ namespace OrbitalPayloadCalculator.UI
 
         private void ResetAll()
         {
+            InvalidateWindowHeight();
             _latitudeInput = "0";
             _apoapsisInput = "80";
             _periapsisInput = "80";
@@ -520,8 +586,12 @@ namespace OrbitalPayloadCalculator.UI
             _manualGravityLossInput = "0";
             _manualAtmoLossInput = "0";
             _manualAttitudeLossInput = "0";
+            _turnStartSpeedInput = "80";
+            _lastAggressiveState = false;
 
             _lossConfig.AutoEstimate = true;
+            _lossConfig.AggressiveEstimate = false;
+            _lossConfig.TurnStartSpeed = -1.0d;
             _lossConfig.OverrideGravityLoss = false;
             _lossConfig.OverrideAtmosphericLoss = false;
             _lossConfig.OverrideAttitudeLoss = false;
@@ -541,8 +611,15 @@ namespace OrbitalPayloadCalculator.UI
             RefreshBodies();
         }
 
+        private void InvalidateWindowHeight()
+        {
+            _needsHeightReset = true;
+        }
+
         private void Compute()
         {
+            InvalidateWindowHeight();
+
             if (!TryParse(_apoapsisInput, out var apoapsis))
             {
                 _lastResult = new PayloadCalculationResult { ErrorMessageKey = "#LOC_OPC_InvalidAltitude" };
@@ -561,6 +638,12 @@ namespace OrbitalPayloadCalculator.UI
                 return;
             }
 
+            if (inclination < 0.0d || inclination > 180.0d)
+            {
+                _lastResult = new PayloadCalculationResult { ErrorMessageKey = "#LOC_OPC_InclinationOutOfRange" };
+                return;
+            }
+
             if (!TryParse(_latitudeInput, out var latitude))
             {
                 _lastResult = new PayloadCalculationResult { ErrorMessageKey = "#LOC_OPC_InvalidLatitude" };
@@ -572,6 +655,10 @@ namespace OrbitalPayloadCalculator.UI
             _targets.PeriapsisAltitudeMeters = periapsis * unitScale;
             _targets.TargetInclinationDegrees = inclination;
             _targets.LaunchLatitudeDegrees = latitude;
+
+            _lossConfig.TurnStartSpeed = TryParse(_turnStartSpeedInput, out var turnSpeed) && turnSpeed > 0.0d
+                ? turnSpeed
+                : -1.0d;
 
             if (TryParse(_manualGravityLossInput, out var gravityLoss))
                 _lossConfig.ManualGravityLossDv = gravityLoss;

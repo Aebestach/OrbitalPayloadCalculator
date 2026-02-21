@@ -15,6 +15,7 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle CenteredHeaderStyle { get; private set; }
         public GUIStyle PanelStyle { get; private set; }
         public GUIStyle SectionStyle { get; private set; }
+        public GUIStyle WarningLabelStyle { get; private set; }
 
         private int _fontSize = -1;
         private Texture2D _panelBgTexture;
@@ -62,6 +63,13 @@ namespace OrbitalPayloadCalculator.UI
             ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter };
             ToggleStyle = new GUIStyle(skin.toggle) { fontSize = fontSize };
 
+            WarningLabelStyle = new GUIStyle(skin.label)
+            {
+                fontSize = fontSize,
+                normal = { textColor = new Color(1f, 0.85f, 0.2f) },
+                wordWrap = true
+            };
+
             _panelBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
             _panelBgTexture.SetPixel(0, 0, new Color(0f, 0f, 0f, 0.35f));
             _panelBgTexture.Apply(false, false);
@@ -97,6 +105,7 @@ namespace OrbitalPayloadCalculator.UI
             ToggleStyle = null;
             PanelStyle = null;
             SectionStyle = null;
+            WarningLabelStyle = null;
 
             if (_panelBgTexture != null)
             {

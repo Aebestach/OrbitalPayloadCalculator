@@ -42,6 +42,7 @@ namespace OrbitalPayloadCalculator.Calculation
     {
         public bool Success;
         public string ErrorMessageKey = string.Empty;
+        public string WarningMessageKey = string.Empty;
         public double RequiredDv;
         public double AvailableDv;
         public double AvailableDvSeaLevel;
@@ -49,6 +50,7 @@ namespace OrbitalPayloadCalculator.Calculation
         public double EstimatedPayloadTons;
         public double OrbitalSpeed;
         public double RotationDv;
+        public double PlaneChangeDv;
         public double PeriapsisAltitudeMeters;
         public double ApoapsisAltitudeMeters;
         public double Eccentricity;
@@ -94,11 +96,18 @@ namespace OrbitalPayloadCalculator.Calculation
             var absLat = Math.Abs(orbitTargets.LaunchLatitudeDegrees);
             var effectiveInc = orbitTargets.TargetInclinationDegrees;
             if (effectiveInc > 90.0d) effectiveInc = 180.0d - effectiveInc;
-            if (effectiveInc + 1.0d < absLat)
+
+            var needsPlaneChange = effectiveInc + 0.5d < absLat;
+            var launchIncDeg = orbitTargets.TargetInclinationDegrees;
+            if (needsPlaneChange)
             {
-                result.ErrorMessageKey = "#LOC_OPC_InclinationBelowLatitude";
-                return result;
+                launchIncDeg = orbitTargets.TargetInclinationDegrees > 90.0d
+                    ? 180.0d - absLat
+                    : absLat;
             }
+
+            if (needsPlaneChange && effectiveInc + 0.5d < absLat)
+                result.WarningMessageKey = "#LOC_OPC_InclinationBelowLatitudeWarning";
 
             var rPe = body.Radius + orbitTargets.PeriapsisAltitudeMeters;
             var rAp = body.Radius + orbitTargets.ApoapsisAltitudeMeters;
@@ -107,12 +116,19 @@ namespace OrbitalPayloadCalculator.Calculation
             var eccentricity = a > 0.0d ? (rAp - rPe) / (rAp + rPe) : 0.0d;
             var orbitalSpeed = Math.Sqrt(mu * ((2.0d / rPe) - (1.0d / a)));
 
+            var planeChangeDv = 0.0d;
+            if (needsPlaneChange)
+            {
+                var planeChangeAngleRad = (absLat - effectiveInc) * Math.PI / 180.0d;
+                planeChangeDv = 2.0d * orbitalSpeed * Math.Sin(planeChangeAngleRad * 0.5d);
+            }
+
             var inertialDv = orbitalSpeed;
             if (body.rotationPeriod > 0.0d)
             {
                 var equatorialSpeed = 2.0d * Math.PI * body.Radius / body.rotationPeriod;
                 var latRad = orbitTargets.LaunchLatitudeDegrees * Math.PI / 180.0d;
-                var incRad = orbitTargets.TargetInclinationDegrees * Math.PI / 180.0d;
+                var incRad = launchIncDeg * Math.PI / 180.0d;
                 var surfaceSpeed = equatorialSpeed * Math.Abs(Math.Cos(latRad));
                 var cosInc = Math.Cos(incRad);
                 var dvSq = orbitalSpeed * orbitalSpeed
@@ -146,22 +162,8 @@ namespace OrbitalPayloadCalculator.Calculation
             {
                 var extraForLoss = payloadGuess;
                 losses = LossModel.Estimate(body, orbitTargets, lossConfig, stats, extraForLoss);
-                requiredDv = Math.Max(0.0d, inertialDv + losses.TotalDv);
+                requiredDv = Math.Max(0.0d, inertialDv + losses.TotalDv + planeChangeDv);
                 payloadGuess = EstimatePayload(stats, body, requiredDv, -1, maxPropStageNum);
-            }
-
-            // Debug: dump per-stage and cumulative mass info
-            if (stats.Stages.Count > 0)
-            {
-                var sortedForLog = new List<StageInfo>(stats.Stages);
-                sortedForLog.Sort((x, y) => x.StageNumber.CompareTo(y.StageNumber));
-                var cumulative = 0.0d;
-                foreach (var s in sortedForLog)
-                {
-                    cumulative += s.WetMassTons;
-                    Debug.Log($"[OPC] Stage {s.StageNumber}: Wet={s.WetMassTons:F4}t  Dry={s.DryMassTons:F4}t  Prop={s.PropellantMassTons:F4}t  CumulativeWet={cumulative:F4}t");
-                }
-                Debug.Log($"[OPC] Estimated={payloadGuess:F4}t  RequiredDv={requiredDv:F1}m/s  AvailDv={totalDv:F1}m/s");
             }
 
             result.Success = true;
@@ -169,7 +171,8 @@ namespace OrbitalPayloadCalculator.Calculation
             result.AvailableDv = totalDv;
             result.EstimatedPayloadTons = payloadGuess;
             result.OrbitalSpeed = orbitalSpeed;
-            result.RotationDv = orbitalSpeed - inertialDv;
+            result.RotationDv = inertialDv - orbitalSpeed;
+            result.PlaneChangeDv = planeChangeDv;
             result.PeriapsisAltitudeMeters = orbitTargets.PeriapsisAltitudeMeters;
             result.ApoapsisAltitudeMeters = orbitTargets.ApoapsisAltitudeMeters;
             result.Eccentricity = eccentricity;

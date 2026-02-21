@@ -6,10 +6,12 @@ namespace OrbitalPayloadCalculator.Calculation
     internal sealed class LossModelConfig
     {
         public bool AutoEstimate = true;
+        public bool AggressiveEstimate;
         public bool OverrideGravityLoss;
         public bool OverrideAtmosphericLoss;
         public bool OverrideAttitudeLoss;
 
+        public double TurnStartSpeed = -1.0d;
         public double ManualGravityLossDv;
         public double ManualAtmosphericLossDv;
         public double ManualAttitudeLossDv;
@@ -43,10 +45,10 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (canSim)
                     SimulateAscent(body, stats, target.PeriapsisAltitudeMeters,
                         target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
-                        estimate, extraPayloadTons);
+                        estimate, config.AggressiveEstimate, config.TurnStartSpeed, extraPayloadTons);
                 else
                     FallbackEstimate(body, target.TargetInclinationDegrees,
-                        target.LaunchLatitudeDegrees, estimate);
+                        target.LaunchLatitudeDegrees, estimate, config.AggressiveEstimate);
             }
 
             if (config.OverrideGravityLoss)
@@ -77,11 +79,13 @@ namespace OrbitalPayloadCalculator.Calculation
         /// </summary>
         private static void SimulateAscent(CelestialBody body, VesselStats stats,
             double targetAltM, double inclinationDeg, double launchLatDeg,
-            LossEstimate result, double extraPayloadTons = 0.0d)
+            LossEstimate result, bool aggressive, double userTurnStartSpeed, double extraPayloadTons = 0.0d)
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
-            const double turnStartSpeed = 80.0d;
+            double turnStartSpeed = userTurnStartSpeed > 0.0d
+                ? userTurnStartSpeed
+                : (aggressive ? 60.0d : 80.0d);
 
             double massKg = (stats.WetMassTons + extraPayloadTons) * 1000.0d;
             double dryMassKg = (stats.DryMassTons + extraPayloadTons) * 1000.0d;
@@ -90,11 +94,15 @@ namespace OrbitalPayloadCalculator.Calculation
             double seaIsp = stats.SeaLevelIspSeconds > 0d ? stats.SeaLevelIspSeconds : vacIsp;
 
             double totalWetTons = stats.WetMassTons + extraPayloadTons;
-            double CdA = 1.0d * Math.Pow(totalWetTons, 0.5d);
+            double cdaCoeff = aggressive ? 0.7d : 1.0d;
+            double CdA = cdaCoeff * Math.Pow(totalWetTons, 0.5d);
 
             bool hasAtmo = body.atmosphere && body.atmosphereDepth > 0d;
             double atmoHeight = hasAtmo ? body.atmosphereDepth : 0d;
-            double turnStartAlt = hasAtmo ? Math.Min(1000.0d, atmoHeight * 0.015d) : 500.0d;
+            double speedRatio = turnStartSpeed / 80.0d;
+            double turnStartAlt = hasAtmo
+                ? Math.Min(1000.0d * speedRatio, atmoHeight * 0.015d * speedRatio)
+                : 500.0d * speedRatio;
             double turnEndAlt = Math.Max(turnStartAlt + 1000.0d, targetAltM);
 
             double altitude = 0d;
@@ -164,7 +172,8 @@ namespace OrbitalPayloadCalculator.Calculation
                 {
                     double progress = Math.Max(0d, Math.Min(1d,
                         (altitude - turnStartAlt) / (turnEndAlt - turnStartAlt)));
-                    gamma = (Math.PI / 2.0d) * (1.0d - Math.Pow(progress, 0.7d));
+                    double turnExponent = aggressive ? 0.55d : 0.7d;
+                    gamma = (Math.PI / 2.0d) * (1.0d - Math.Pow(progress, turnExponent));
                     if (gamma < 0.02d) gamma = 0.02d;
                 }
 
@@ -182,13 +191,17 @@ namespace OrbitalPayloadCalculator.Calculation
             {
                 double pressureScale = Math.Max(0.01d, body.atmospherePressureSeaLevel / OneAtmKPa);
                 double geeScale = Math.Max(0.1d, body.GeeASL);
-                double baseLoss = 20.0d + 20.0d * Math.Sqrt(pressureScale) * geeScale;
+                double baseA = aggressive ? 15.0d : 20.0d;
+                double baseB = aggressive ? 15.0d : 20.0d;
+                double baseLoss = baseA + baseB * Math.Sqrt(pressureScale) * geeScale;
                 result.AttitudeLossDv = baseLoss * (1.0d + incFactor);
             }
             else if (body != null)
             {
                 double geeScale = Math.Max(0.05d, body.GeeASL);
-                result.AttitudeLossDv = (3.0d + 5.0d * geeScale) * (1.0d + incFactor);
+                double vacA = aggressive ? 2.0d : 3.0d;
+                double vacB = aggressive ? 3.5d : 5.0d;
+                result.AttitudeLossDv = (vacA + vacB * geeScale) * (1.0d + incFactor);
             }
         }
 
@@ -197,23 +210,29 @@ namespace OrbitalPayloadCalculator.Calculation
         /// Uses simple empirical formulas.
         /// </summary>
         private static void FallbackEstimate(CelestialBody body, double inclinationDeg,
-            double launchLatDeg, LossEstimate result)
+            double launchLatDeg, LossEstimate result, bool aggressive)
         {
             double surfGee = body.GeeASL;
+            double gravCoeff = aggressive ? 750.0d : 900.0d;
+            float gravMin = aggressive ? 300f : 400f;
             result.GravityLossDv = Mathf.Clamp(
-                (float)(900.0d * Mathf.Pow((float)surfGee, 0.35f)), 400f, 2200f);
+                (float)(gravCoeff * Mathf.Pow((float)surfGee, 0.35f)), gravMin, 2200f);
 
             if (body.atmosphere)
             {
                 float pressureScale = Mathf.Clamp(
                     (float)(body.atmospherePressureSeaLevel / OneAtmKPa), 0.01f, 10f);
+                float atmoA = aggressive ? 60f : 80f;
+                float atmoB = aggressive ? 80f : 100f;
                 result.AtmosphericLossDv = Mathf.Clamp(
-                    80f + 100f * pressureScale, 50f, 800f);
+                    atmoA + atmoB * pressureScale, 50f, 800f);
             }
 
             double latScale = Math.Abs(Math.Cos(launchLatDeg * Math.PI / 180.0d));
             double incFactor = 0.2d * Math.Min(1.0d, inclinationDeg / 90.0d) * latScale;
-            result.AttitudeLossDv = 35.0d + 55.0d * incFactor;
+            double attA = aggressive ? 25.0d : 35.0d;
+            double attB = aggressive ? 40.0d : 55.0d;
+            result.AttitudeLossDv = attA + attB * incFactor;
         }
     }
 }
