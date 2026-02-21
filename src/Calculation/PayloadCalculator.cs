@@ -42,27 +42,34 @@ namespace OrbitalPayloadCalculator.Calculation
     {
         public bool Success;
         public string ErrorMessageKey = string.Empty;
+        public string WarningMessageKey = string.Empty;
         public double RequiredDv;
         public double AvailableDv;
         public double AvailableDvSeaLevel;
         public double AvailableDvVacuum;
         public double EstimatedPayloadTons;
         public double OrbitalSpeed;
+        public double RotationDv;
+        public double PlaneChangeDv;
+        public double PeriapsisAltitudeMeters;
+        public double ApoapsisAltitudeMeters;
+        public double Eccentricity;
+        public double InclinationDegrees;
         public LossEstimate Losses;
-        public int PayloadCutoffStage = -1;
         public List<StageInfo> ActiveStages = new List<StageInfo>();
     }
 
     internal static class PayloadCalculator
     {
         private const double G0 = 9.80665d;
+        private const double OneAtmKPa = 101.325d;
+        private const double KerbinAtmoDepthMeters = 70000.0d;
 
-        public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig, int payloadCutoffStage)
+        public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig)
         {
             var result = new PayloadCalculationResult
             {
-                Losses = new LossEstimate(),
-                PayloadCutoffStage = payloadCutoffStage
+                Losses = new LossEstimate()
             };
 
             if (stats == null || !stats.HasVessel)
@@ -78,27 +85,58 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             var body = orbitTargets.LaunchBody;
-            orbitTargets.ClampAltitude();
+            orbitTargets.ClampLatitude();
+            var altError = orbitTargets.ClampAltitudes();
             orbitTargets.ClampInclination();
-            orbitTargets.ClampEccentricity();
 
-            var r = body.Radius + orbitTargets.TargetOrbitAltitudeMeters;
-            var mu = body.gravParameter;
-            var orbitalSpeed = Math.Sqrt(mu / r);
-
-            if (orbitTargets.UseEccentricity)
+            if (altError != null)
             {
-                var e = orbitTargets.TargetEccentricity;
-                var a = r / (1.0d - e);
-                orbitalSpeed = Math.Sqrt(mu * ((2.0d / r) - (1.0d / a)));
+                result.ErrorMessageKey = altError;
+                return result;
             }
 
-            var rotationAssist = 0.0d;
+            var absLat = Math.Abs(orbitTargets.LaunchLatitudeDegrees);
+            var effectiveInc = orbitTargets.TargetInclinationDegrees;
+            if (effectiveInc > 90.0d) effectiveInc = 180.0d - effectiveInc;
+
+            var needsPlaneChange = effectiveInc + 0.5d < absLat;
+            var launchIncDeg = orbitTargets.TargetInclinationDegrees;
+            if (needsPlaneChange)
+            {
+                launchIncDeg = orbitTargets.TargetInclinationDegrees > 90.0d
+                    ? 180.0d - absLat
+                    : absLat;
+            }
+
+            if (needsPlaneChange && effectiveInc + 0.5d < absLat)
+                result.WarningMessageKey = "#LOC_OPC_InclinationBelowLatitudeWarning";
+
+            var rPe = body.Radius + orbitTargets.PeriapsisAltitudeMeters;
+            var rAp = body.Radius + orbitTargets.ApoapsisAltitudeMeters;
+            var mu = body.gravParameter;
+            var a = (rPe + rAp) * 0.5d;
+            var eccentricity = a > 0.0d ? (rAp - rPe) / (rAp + rPe) : 0.0d;
+            var orbitalSpeed = Math.Sqrt(mu * ((2.0d / rPe) - (1.0d / a)));
+
+            var planeChangeDv = 0.0d;
+            if (needsPlaneChange)
+            {
+                var planeChangeAngleRad = (absLat - effectiveInc) * Math.PI / 180.0d;
+                planeChangeDv = 2.0d * orbitalSpeed * Math.Sin(planeChangeAngleRad * 0.5d);
+            }
+
+            var inertialDv = orbitalSpeed;
             if (body.rotationPeriod > 0.0d)
             {
                 var equatorialSpeed = 2.0d * Math.PI * body.Radius / body.rotationPeriod;
-                var inclinationPenalty = Math.Cos(orbitTargets.TargetInclinationDegrees * Math.PI / 180.0d);
-                rotationAssist = Math.Max(0.0d, equatorialSpeed * inclinationPenalty);
+                var latRad = orbitTargets.LaunchLatitudeDegrees * Math.PI / 180.0d;
+                var incRad = launchIncDeg * Math.PI / 180.0d;
+                var surfaceSpeed = equatorialSpeed * Math.Abs(Math.Cos(latRad));
+                var cosInc = Math.Cos(incRad);
+                var dvSq = orbitalSpeed * orbitalSpeed
+                           - 2.0d * orbitalSpeed * equatorialSpeed * cosInc
+                           + surfaceSpeed * surfaceSpeed;
+                inertialDv = Math.Sqrt(Math.Max(0.0d, dvSq));
             }
 
             var activeStages = new List<StageInfo>();
@@ -107,9 +145,9 @@ namespace OrbitalPayloadCalculator.Calculation
 
             if (stats.Stages.Count > 0)
             {
-                totalDv = ComputeStagedDv(stats, body, payloadCutoffStage, activeStages, out maxPropStageNum);
-                result.AvailableDvSeaLevel = ComputeStagedDvForDisplay(stats, body, payloadCutoffStage, useSeaLevelIsp: true);
-                result.AvailableDvVacuum = ComputeStagedDvForDisplay(stats, body, payloadCutoffStage, useSeaLevelIsp: false);
+                totalDv = ComputeStagedDv(stats, body, -1, activeStages, out maxPropStageNum);
+                result.AvailableDvSeaLevel = ComputeStagedDvForDisplay(stats, body, -1, useSeaLevelIsp: true);
+                result.AvailableDvVacuum = ComputeStagedDvForDisplay(stats, body, -1, useSeaLevelIsp: false);
             }
             else
             {
@@ -118,18 +156,16 @@ namespace OrbitalPayloadCalculator.Calculation
                 result.AvailableDvVacuum = ComputeSimpleDvWithMode(stats, body, useSeaLevelIsp: false);
             }
 
-            // Iteratively refine: a heavier rocket (with payload) has higher
-            // gravity/drag losses, which raises required DV and lowers payload.
             double payloadGuess = 0.0d;
             LossEstimate losses = null;
             double requiredDv = 0.0d;
 
             for (int iter = 0; iter < 4; iter++)
             {
-                var extraForLoss = payloadCutoffStage < 0 ? payloadGuess : 0.0d;
+                var extraForLoss = payloadGuess;
                 losses = LossModel.Estimate(body, orbitTargets, lossConfig, stats, extraForLoss);
-                requiredDv = Math.Max(0.0d, orbitalSpeed - rotationAssist + losses.TotalDv);
-                payloadGuess = EstimatePayload(stats, body, requiredDv, payloadCutoffStage, maxPropStageNum);
+                requiredDv = Math.Max(0.0d, inertialDv + losses.TotalDv + planeChangeDv);
+                payloadGuess = EstimatePayload(stats, body, requiredDv, -1, maxPropStageNum);
             }
 
             result.Success = true;
@@ -137,6 +173,12 @@ namespace OrbitalPayloadCalculator.Calculation
             result.AvailableDv = totalDv;
             result.EstimatedPayloadTons = payloadGuess;
             result.OrbitalSpeed = orbitalSpeed;
+            result.RotationDv = inertialDv - orbitalSpeed;
+            result.PlaneChangeDv = planeChangeDv;
+            result.PeriapsisAltitudeMeters = orbitTargets.PeriapsisAltitudeMeters;
+            result.ApoapsisAltitudeMeters = orbitTargets.ApoapsisAltitudeMeters;
+            result.Eccentricity = eccentricity;
+            result.InclinationDegrees = orbitTargets.TargetInclinationDegrees;
             result.Losses = losses;
             result.ActiveStages = activeStages;
             return result;
@@ -340,17 +382,6 @@ namespace OrbitalPayloadCalculator.Calculation
         private static double EstimatePayload(VesselStats stats, CelestialBody body, double requiredDv,
             int payloadCutoffStage, int maxPropStageNum)
         {
-            if (stats.Stages.Count > 0 && payloadCutoffStage >= 0)
-            {
-                var payloadMass = 0.0d;
-                foreach (var stage in stats.Stages)
-                {
-                    if (stage.StageNumber <= payloadCutoffStage)
-                        payloadMass += stage.WetMassTons;
-                }
-                return payloadMass;
-            }
-
             if (stats.Stages.Count == 0)
             {
                 var isp = GetEffectiveIsp(stats.VacuumIspSeconds, stats.SeaLevelIspSeconds, body, true);
@@ -397,7 +428,7 @@ namespace OrbitalPayloadCalculator.Calculation
         }
 
         private static string _cachedBlendBody;
-        private static double _cachedBlendFactor = 0.3d;
+        private static double _cachedBlendFactor = double.NaN;
 
         /// <summary>
         /// Samples the body's pressure curve at multiple altitudes and computes a
@@ -409,11 +440,14 @@ namespace OrbitalPayloadCalculator.Calculation
             if (body == null || !body.atmosphere || body.atmosphereDepth <= 0d)
                 return 0.0d;
 
-            if (body.bodyName == _cachedBlendBody)
+            if (body.bodyName == _cachedBlendBody &&
+                !double.IsNaN(_cachedBlendFactor) &&
+                !double.IsInfinity(_cachedBlendFactor))
                 return _cachedBlendFactor;
 
             var seaP = body.atmospherePressureSeaLevel;
             if (seaP <= 0d) seaP = 101.325d;
+            var dynamicDefault = GetDefaultBlendFactor(body);
 
             double sum = 0d, wSum = 0d;
             const int N = 20;
@@ -427,8 +461,21 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             _cachedBlendBody = body.bodyName;
-            _cachedBlendFactor = wSum > 0d ? Math.Min(0.5d, sum / wSum) : 0.3d;
+            _cachedBlendFactor = wSum > 0d ? Math.Min(0.5d, sum / wSum) : dynamicDefault;
+            if (double.IsNaN(_cachedBlendFactor) || double.IsInfinity(_cachedBlendFactor))
+                _cachedBlendFactor = dynamicDefault;
             return _cachedBlendFactor;
+        }
+
+        private static double GetDefaultBlendFactor(CelestialBody body)
+        {
+            if (body == null || !body.atmosphere || body.atmosphereDepth <= 0d)
+                return 0.0d;
+
+            var pN = Math.Max(0.0d, Math.Min(15.0d, body.atmospherePressureSeaLevel / OneAtmKPa));
+            var dN = Math.Max(0.0d, Math.Min(12.0d, body.atmosphereDepth / KerbinAtmoDepthMeters));
+            var raw = 0.18d + 0.10d * Math.Log(1.0d + pN) + 0.06d * Math.Pow(dN, 0.35d);
+            return Math.Max(0.12d, Math.Min(0.55d, raw));
         }
     }
 }

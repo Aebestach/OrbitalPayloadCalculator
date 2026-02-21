@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("OrbitalPayloadCalculator")]
@@ -17,3 +17,6 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyVersion("1.0.0")]
 [assembly: AssemblyFileVersion("1.0.0")]
+
+
+[assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]
