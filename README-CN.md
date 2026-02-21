@@ -99,13 +99,13 @@
 *   **纯火箭法 (Pure Rocket)：**
    将载荷放在一侧（不影响火箭计算）, 直接计算火箭自身的 Delta-V，从而直接得到运输能力。
 
-<div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start;">
+<div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/pylRnia.jpg" alt="融合载荷法" width="500"/>
+    <img src="https://i.imgur.com/pylRnia.jpg" alt="融合载荷法" width="1000"/>
     <p>融合载荷法</p>
   </div>
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="纯火箭法" width="500"/>
+    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="纯火箭法" width="1000"/>
     <p>纯火箭法</p>
   </div>
 </div>

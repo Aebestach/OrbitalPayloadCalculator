@@ -99,13 +99,13 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 *   **Pure Rocket:**
    Sets the payload aside (does not affect rocket calculation) and calculates the rocket's own Delta-V directly to determine transport capacity.
 
-<div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start;">
+<div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/pylRnia.jpg" alt="Incorporate Payload" width="500"/>
+    <img src="https://i.imgur.com/pylRnia.jpg" alt="融合载荷法" width="1000"/>
     <p>Incorporate Payload</p>
   </div>
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="Pure Rocket" width="500"/>
+    <img src="https://i.imgur.com/QRGMMKk.jpg" alt="纯火箭法" width="1000"/>
     <p>Pure Rocket</p>
   </div>
 </div>
