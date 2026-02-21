@@ -14,18 +14,18 @@
 
 ## 📖 Introduction
 
-In Kerbal Space Program (KSP), designing rockets is often less "engineering" and more "alchemy" — slapping on fuel tanks, guessing stage counts, praying it doesn't explode at launch, and only realizing after orbit insertion that:
+In Kerbal Space Program (KSP), designing rockets is often less ***engineering*** and more ***alchemy*** — slapping on fuel tanks, guessing stage counts, praying it doesn't explode at launch, and only realizing after orbit insertion that:
 
 *   Either you have too little Delta-V, missing the Mun by a hair and watching your Kerbals cry;
 *   Or you have absurdly too much Delta-V, arriving at the Mun with enough fuel to tour the solar system;
 *   Most awkwardly, you finally reach orbit only to find the payload feels like a lead block, watching the fuel gauge drop bar by bar along with your heart.
 
-Surprisingly, despite KSP being a decade old, few tools have specifically addressed this problem. As a rocket designer myself, I've felt the pain: constantly checking ΔV charts and calculating payloads is brain-draining and error-prone. These needs and "pain points" led to the birth of **Orbital Payload Calculator**.
+Surprisingly, despite KSP being a decade old, few tools have specifically addressed this problem. As a rocket designer myself, I've felt the pain: constantly checking Delta-V charts and calculating payloads is brain-draining and error-prone. These needs and ***pain points*** led to the birth of **Orbital Payload Calculator**.
 
-Now, **Orbital Payload Calculator** upgrades your "rocket alchemy" to "rational engineering".
-It calculates payload mass and required Delta-V in advance, so you no longer pile on fuel by feel or carry extra "emotional support fuel tanks".
+Now, **Orbital Payload Calculator** upgrades your ***rocket alchemy*** to ***rational engineering***.
+It calculates payload mass and required Delta-V in advance, so you no longer pile on fuel by feel or carry extra ***emotional support fuel tanks***.
 
-From now on, your rockets won't be "almost there" or "overflowing with fuel", but rather — just right, reaching orbit elegantly and heading to the Mun with style. 🚀
+From now on, your rockets won't be ***almost there*** or ***overflowing with fuel***, but rather — just right, reaching orbit elegantly and heading to the Mun with style. 🚀
 
 **Orbital Payload Calculator** is a utility mod for **Kerbal Space Program (KSP)** that estimates the maximum payload mass your rocket can deliver to a specific target orbit. It performs a simulation-based calculation to account for gravity, atmospheric drag, and steering losses, helping you design efficient launch vehicles without the guesswork.
 
@@ -82,14 +82,14 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 4.  **Loss Settings:**
     *   **Auto-estimate:** Recommended. Uses the built-in ascent simulation.
     *   **Optimistic:** Check this if you fly a very efficient gravity turn.
-    *   **Manual Overrides:** Uncheck "Auto" to manually enter Delta-V reserves for Gravity, Atmosphere, and Attitude losses.
+    *   **Manual Overrides:** Uncheck ***Auto*** to manually enter Delta-V reserves for Gravity, Atmosphere, and Attitude losses.
 5.  **Calculate:** Click the **Calculate** button.
 
 ### Results Explained
 *   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
 *   **Required Delta-V:** Total Delta-V needed to reach orbit (Orbital Speed + Losses + Plane Change ± Rotation Assist).
 *   **Available Delta-V:** Your vessel's total Delta-V.
-*   **Loss Breakdown:** Shows how much Δv is lost to Gravity, Drag, and Steering (Attitude).
+*   **Loss Breakdown:** Shows how much Delta-V is lost to Gravity, Drag, and Steering (Attitude).
 
 ### Payload Calculation Methods
 
@@ -137,5 +137,5 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 *   **Development Status:**
 
-    *   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every "aerodynamic disaster".
-    *   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true "Chief Engineer" together.
+    *   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every ***aerodynamic disaster***.
+    *   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true ***Chief Engineer*** together.
