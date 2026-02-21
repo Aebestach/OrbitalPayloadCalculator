@@ -62,6 +62,8 @@ namespace OrbitalPayloadCalculator.Calculation
     internal static class PayloadCalculator
     {
         private const double G0 = 9.80665d;
+        private const double OneAtmKPa = 101.325d;
+        private const double KerbinAtmoDepthMeters = 70000.0d;
 
         public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig)
         {
@@ -426,7 +428,7 @@ namespace OrbitalPayloadCalculator.Calculation
         }
 
         private static string _cachedBlendBody;
-        private static double _cachedBlendFactor = 0.3d;
+        private static double _cachedBlendFactor = double.NaN;
 
         /// <summary>
         /// Samples the body's pressure curve at multiple altitudes and computes a
@@ -438,11 +440,14 @@ namespace OrbitalPayloadCalculator.Calculation
             if (body == null || !body.atmosphere || body.atmosphereDepth <= 0d)
                 return 0.0d;
 
-            if (body.bodyName == _cachedBlendBody)
+            if (body.bodyName == _cachedBlendBody &&
+                !double.IsNaN(_cachedBlendFactor) &&
+                !double.IsInfinity(_cachedBlendFactor))
                 return _cachedBlendFactor;
 
             var seaP = body.atmospherePressureSeaLevel;
             if (seaP <= 0d) seaP = 101.325d;
+            var dynamicDefault = GetDefaultBlendFactor(body);
 
             double sum = 0d, wSum = 0d;
             const int N = 20;
@@ -456,8 +461,21 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             _cachedBlendBody = body.bodyName;
-            _cachedBlendFactor = wSum > 0d ? Math.Min(0.5d, sum / wSum) : 0.3d;
+            _cachedBlendFactor = wSum > 0d ? Math.Min(0.5d, sum / wSum) : dynamicDefault;
+            if (double.IsNaN(_cachedBlendFactor) || double.IsInfinity(_cachedBlendFactor))
+                _cachedBlendFactor = dynamicDefault;
             return _cachedBlendFactor;
+        }
+
+        private static double GetDefaultBlendFactor(CelestialBody body)
+        {
+            if (body == null || !body.atmosphere || body.atmosphereDepth <= 0d)
+                return 0.0d;
+
+            var pN = Math.Max(0.0d, Math.Min(15.0d, body.atmospherePressureSeaLevel / OneAtmKPa));
+            var dN = Math.Max(0.0d, Math.Min(12.0d, body.atmosphereDepth / KerbinAtmoDepthMeters));
+            var raw = 0.18d + 0.10d * Math.Log(1.0d + pN) + 0.06d * Math.Pow(dN, 0.35d);
+            return Math.Max(0.12d, Math.Min(0.55d, raw));
         }
     }
 }

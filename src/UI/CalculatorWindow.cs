@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using ClickThroughFix;
 using KSP.Localization;
 using OrbitalPayloadCalculator.Calculation;
 using OrbitalPayloadCalculator.Services;
@@ -27,9 +28,9 @@ namespace OrbitalPayloadCalculator.UI
         private Rect _windowRect = new Rect(220, 120, 780, 100);
 
         private string _latitudeInput = "0";
-        private string _apoapsisInput = "80";
-        private string _periapsisInput = "80";
-        private string _prevApoapsisInput = "80";
+        private string _apoapsisInput = "100";
+        private string _periapsisInput = "100";
+        private string _prevApoapsisInput = "100";
         private string _inclinationInput = "0";
 
         private int _altitudeUnitIndex = 1;
@@ -39,8 +40,6 @@ namespace OrbitalPayloadCalculator.UI
         private string _manualGravityLossInput = "0";
         private string _manualAtmoLossInput = "0";
         private string _manualAttitudeLossInput = "0";
-        private string _turnStartSpeedInput = "80";
-        private bool _lastAggressiveState;
 
         private CelestialBody[] _bodies = Array.Empty<CelestialBody>();
         private int _bodyIndex;
@@ -90,6 +89,7 @@ namespace OrbitalPayloadCalculator.UI
             _isEditor = isEditor;
             _fontSizeInput = _settings.FontSize.ToString(CultureInfo.InvariantCulture);
             RefreshBodies();
+            ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
         }
 
         public void OnGUI()
@@ -115,23 +115,23 @@ namespace OrbitalPayloadCalculator.UI
                 _windowRect = new Rect(_windowRect.x, _windowRect.y, _windowRect.width, 100);
             }
 
-            _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow, Loc("#LOC_OPC_Title"), _styleManager.WindowStyle);
+            _windowRect = ClickThruBlocker.GUILayoutWindow(WindowId, _windowRect, DrawWindow, Loc("#LOC_OPC_Title"), _styleManager.WindowStyle);
 
             if (_showBodyPopup)
             {
-                _bodyPopupRect = GUILayout.Window(BodyPopupId, _bodyPopupRect, DrawBodyPopup,
+                _bodyPopupRect = ClickThruBlocker.GUILayoutWindow(BodyPopupId, _bodyPopupRect, DrawBodyPopup,
                     Loc("#LOC_OPC_SelectBody"), _styleManager.WindowStyle);
             }
 
             if (_showVesselPopup)
             {
-                _vesselPopupRect = GUILayout.Window(VesselPopupId, _vesselPopupRect, DrawVesselPopup,
+                _vesselPopupRect = ClickThruBlocker.GUILayoutWindow(VesselPopupId, _vesselPopupRect, DrawVesselPopup,
                     Loc("#LOC_OPC_SelectVessel"), _styleManager.WindowStyle);
             }
 
             if (_showStagePopup)
             {
-                _stagePopupRect = GUILayout.Window(StagePopupId, _stagePopupRect, DrawStagePopup,
+                _stagePopupRect = ClickThruBlocker.GUILayoutWindow(StagePopupId, _stagePopupRect, DrawStagePopup,
                     Loc("#LOC_OPC_StageBreakdown"), _styleManager.WindowStyle);
 
                 if (_stagePopupNeedsCenter && _stagePopupRect.width > 20)
@@ -249,6 +249,7 @@ namespace OrbitalPayloadCalculator.UI
                 {
                     _bodyIndex = i;
                     _targets.LaunchBody = _bodies[_bodyIndex];
+                    ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
                     _showBodyPopup = false;
                 }
             }
@@ -433,12 +434,6 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(4);
             _lossConfig.AggressiveEstimate = GUILayout.Toggle(_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle);
 
-            if (_lossConfig.AggressiveEstimate != _lastAggressiveState)
-            {
-                _lastAggressiveState = _lossConfig.AggressiveEstimate;
-                _turnStartSpeedInput = _lossConfig.AggressiveEstimate ? "60" : "80";
-            }
-
             GUILayout.Space(8);
 
             DrawOverrideRow(Loc("#LOC_OPC_GravityLoss"), ref _lossConfig.OverrideGravityLoss, ref _manualGravityLossInput);
@@ -447,9 +442,6 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(8);
             DrawOverrideRow(Loc("#LOC_OPC_AttitudeLoss"), ref _lossConfig.OverrideAttitudeLoss, ref _manualAttitudeLossInput);
             GUILayout.Space(8);
-
-            DrawLabeledField(Loc("#LOC_OPC_TurnStartSpeed"), ref _turnStartSpeedInput);
-            GUILayout.Space(4);
         }
 
         private void DrawResultPanel()
@@ -578,16 +570,11 @@ namespace OrbitalPayloadCalculator.UI
         {
             InvalidateWindowHeight();
             _latitudeInput = "0";
-            _apoapsisInput = "80";
-            _periapsisInput = "80";
-            _prevApoapsisInput = "80";
             _inclinationInput = "0";
             _altitudeUnitIndex = 1;
             _manualGravityLossInput = "0";
             _manualAtmoLossInput = "0";
             _manualAttitudeLossInput = "0";
-            _turnStartSpeedInput = "80";
-            _lastAggressiveState = false;
 
             _lossConfig.AutoEstimate = true;
             _lossConfig.AggressiveEstimate = false;
@@ -609,6 +596,7 @@ namespace OrbitalPayloadCalculator.UI
             _showStagePopup = false;
 
             RefreshBodies();
+            ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
         }
 
         private void InvalidateWindowHeight()
@@ -655,10 +643,7 @@ namespace OrbitalPayloadCalculator.UI
             _targets.PeriapsisAltitudeMeters = periapsis * unitScale;
             _targets.TargetInclinationDegrees = inclination;
             _targets.LaunchLatitudeDegrees = latitude;
-
-            _lossConfig.TurnStartSpeed = TryParse(_turnStartSpeedInput, out var turnSpeed) && turnSpeed > 0.0d
-                ? turnSpeed
-                : -1.0d;
+            _lossConfig.TurnStartSpeed = -1.0d;
 
             if (TryParse(_manualGravityLossInput, out var gravityLoss))
                 _lossConfig.ManualGravityLossDv = gravityLoss;
@@ -809,6 +794,16 @@ namespace OrbitalPayloadCalculator.UI
             if (!TryParse(input, out var value)) return input;
             var meters = value * oldScale;
             return (meters / newScale).ToString("G", CultureInfo.InvariantCulture);
+        }
+
+        private void ApplyDefaultOrbitInputsForBody(CelestialBody body)
+        {
+            _targets.ApplyDefaultAltitudesForBody(body);
+            var unitScale = AltitudeUnitScales[_altitudeUnitIndex];
+            var defaultInput = (_targets.ApoapsisAltitudeMeters / unitScale).ToString("G", CultureInfo.InvariantCulture);
+            _apoapsisInput = defaultInput;
+            _periapsisInput = defaultInput;
+            _prevApoapsisInput = defaultInput;
         }
 
         private static string Loc(string key)

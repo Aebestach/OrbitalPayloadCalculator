@@ -5,11 +5,28 @@ namespace OrbitalPayloadCalculator.Calculation
 {
     internal sealed class OrbitTargets
     {
+        private const double AtmospherePaddingMeters = 10000.0d;
+        private const double VacuumDefaultOrbitMeters = 100000.0d;
+
         public CelestialBody LaunchBody { get; set; }
         public double LaunchLatitudeDegrees { get; set; } = 0.0d;
-        public double PeriapsisAltitudeMeters { get; set; } = 80000.0d;
-        public double ApoapsisAltitudeMeters { get; set; } = 80000.0d;
+        public double PeriapsisAltitudeMeters { get; set; } = VacuumDefaultOrbitMeters;
+        public double ApoapsisAltitudeMeters { get; set; } = VacuumDefaultOrbitMeters;
         public double TargetInclinationDegrees { get; set; } = 0.0d;
+
+        public static double GetDefaultOrbitAltitudeMeters(CelestialBody body)
+        {
+            if (body != null && body.atmosphere && body.atmosphereDepth > 0.0d)
+                return body.atmosphereDepth + AtmospherePaddingMeters;
+            return VacuumDefaultOrbitMeters;
+        }
+
+        public void ApplyDefaultAltitudesForBody(CelestialBody body)
+        {
+            var defaultAltitude = GetDefaultOrbitAltitudeMeters(body);
+            PeriapsisAltitudeMeters = defaultAltitude;
+            ApoapsisAltitudeMeters = defaultAltitude;
+        }
 
         public double ClampLatitude()
         {

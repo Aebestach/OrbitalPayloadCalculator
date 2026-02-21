@@ -30,6 +30,8 @@ namespace OrbitalPayloadCalculator.Calculation
         private const double G0 = 9.80665d;
         private const double OneAtmKPa = 101.325d;
         private const double AirRSpecific = 287.058d;
+        private const double KerbinAtmoDepthMeters = 70000.0d;
+        private const double KerbinRadiusMeters = 600000.0d;
 
         public static LossEstimate Estimate(CelestialBody body, OrbitTargets target,
             LossModelConfig config, VesselStats stats, double extraPayloadTons = 0.0d)
@@ -83,9 +85,15 @@ namespace OrbitalPayloadCalculator.Calculation
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
+            GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
+            var baseTurn = aggressive ? 60.0d : 80.0d;
+            var autoTurn = baseTurn * Math.Pow(gN, 0.25d) *
+                           (0.92d + 0.18d * Math.Log(1.0d + pN) + 0.12d * Math.Pow(dN, 0.3d));
             double turnStartSpeed = userTurnStartSpeed > 0.0d
                 ? userTurnStartSpeed
-                : (aggressive ? 60.0d : 80.0d);
+                : Clamp(autoTurn, 40.0d, 220.0d);
+            if (double.IsNaN(turnStartSpeed) || double.IsInfinity(turnStartSpeed))
+                turnStartSpeed = baseTurn;
 
             double massKg = (stats.WetMassTons + extraPayloadTons) * 1000.0d;
             double dryMassKg = (stats.DryMassTons + extraPayloadTons) * 1000.0d;
@@ -101,8 +109,8 @@ namespace OrbitalPayloadCalculator.Calculation
             double atmoHeight = hasAtmo ? body.atmosphereDepth : 0d;
             double speedRatio = turnStartSpeed / 80.0d;
             double turnStartAlt = hasAtmo
-                ? Math.Min(1000.0d * speedRatio, atmoHeight * 0.015d * speedRatio)
-                : 500.0d * speedRatio;
+                ? Clamp(atmoHeight * (0.010d + 0.004d * Math.Log(1.0d + pN)), 800.0d, 22000.0d) * speedRatio
+                : 300.0d * speedRatio;
             double turnEndAlt = Math.Max(turnStartAlt + 1000.0d, targetAltM);
 
             double altitude = 0d;
@@ -189,19 +197,20 @@ namespace OrbitalPayloadCalculator.Calculation
             double incFactor = rawIncFactor * latScale;
             if (body != null && body.atmosphere)
             {
-                double pressureScale = Math.Max(0.01d, body.atmospherePressureSeaLevel / OneAtmKPa);
-                double geeScale = Math.Max(0.1d, body.GeeASL);
-                double baseA = aggressive ? 15.0d : 20.0d;
-                double baseB = aggressive ? 15.0d : 20.0d;
-                double baseLoss = baseA + baseB * Math.Sqrt(pressureScale) * geeScale;
+                double baseA0 = aggressive ? 15.0d : 20.0d;
+                double baseB0 = aggressive ? 15.0d : 20.0d;
+                double baseA = baseA0 * (0.90d + 0.15d * Math.Pow(gN, 0.3d) + 0.10d * Math.Pow(dN, 0.25d));
+                double baseB = baseB0 * (0.90d + 0.10d * Math.Log(1.0d + pN) + 0.10d * Math.Pow(gN, 0.25d));
+                double baseLoss = baseA + baseB * Math.Sqrt(Math.Max(0.01d, pN)) * gN;
                 result.AttitudeLossDv = baseLoss * (1.0d + incFactor);
             }
             else if (body != null)
             {
-                double geeScale = Math.Max(0.05d, body.GeeASL);
-                double vacA = aggressive ? 2.0d : 3.0d;
-                double vacB = aggressive ? 3.5d : 5.0d;
-                result.AttitudeLossDv = (vacA + vacB * geeScale) * (1.0d + incFactor);
+                double vacA0 = aggressive ? 2.0d : 3.0d;
+                double vacB0 = aggressive ? 3.5d : 5.0d;
+                double vacA = vacA0 * (0.90d + 0.20d * Math.Pow(gN, 0.3d));
+                double vacB = vacB0 * (0.90d + 0.15d * Math.Pow(gN, 0.25d) + 0.10d * Math.Pow(rN, 0.2d));
+                result.AttitudeLossDv = (vacA + vacB * gN) * (1.0d + incFactor);
             }
         }
 
@@ -212,27 +221,57 @@ namespace OrbitalPayloadCalculator.Calculation
         private static void FallbackEstimate(CelestialBody body, double inclinationDeg,
             double launchLatDeg, LossEstimate result, bool aggressive)
         {
-            double surfGee = body.GeeASL;
-            double gravCoeff = aggressive ? 750.0d : 900.0d;
-            float gravMin = aggressive ? 300f : 400f;
-            result.GravityLossDv = Mathf.Clamp(
-                (float)(gravCoeff * Mathf.Pow((float)surfGee, 0.35f)), gravMin, 2200f);
+            GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
+            double gravCoeff0 = aggressive ? 750.0d : 900.0d;
+            double gravMin0 = aggressive ? 300.0d : 400.0d;
+            double gravCoeff = gravCoeff0 * Math.Pow(rN, 0.30d) * Math.Pow(gN, 0.30d);
+            double gravMin = gravMin0 * Math.Pow(rN, 0.25d) * Math.Pow(gN, 0.20d);
+            double gravMax = 2200.0d * Math.Pow(rN, 0.30d);
+            result.GravityLossDv = Clamp(gravCoeff, gravMin, gravMax);
 
+            result.AtmosphericLossDv = 0.0d;
             if (body.atmosphere)
             {
-                float pressureScale = Mathf.Clamp(
-                    (float)(body.atmospherePressureSeaLevel / OneAtmKPa), 0.01f, 10f);
-                float atmoA = aggressive ? 60f : 80f;
-                float atmoB = aggressive ? 80f : 100f;
-                result.AtmosphericLossDv = Mathf.Clamp(
-                    atmoA + atmoB * pressureScale, 50f, 800f);
+                double atmoA0 = aggressive ? 60.0d : 80.0d;
+                double atmoB0 = aggressive ? 80.0d : 100.0d;
+                double atmoA = atmoA0 * Math.Pow(Math.Max(0.05d, dN), 0.30d);
+                double atmoB = atmoB0 * Math.Pow(Math.Max(0.01d, pN), 0.60d) * Math.Pow(Math.Max(0.05d, dN), 0.20d);
+                double atmoMax = 800.0d * Math.Pow(rN, 0.30d) * Math.Pow(Math.Max(1.0d, pN), 0.20d);
+                result.AtmosphericLossDv = Clamp(atmoA + atmoB, 30.0d, atmoMax);
             }
 
             double latScale = Math.Abs(Math.Cos(launchLatDeg * Math.PI / 180.0d));
-            double incFactor = 0.2d * Math.Min(1.0d, inclinationDeg / 90.0d) * latScale;
-            double attA = aggressive ? 25.0d : 35.0d;
-            double attB = aggressive ? 40.0d : 55.0d;
+            double incPrefix = 0.2d * (0.95d + 0.08d * Math.Min(1.5d, Math.Log(1.0d + rN)));
+            double incFactor = incPrefix * Math.Min(1.0d, inclinationDeg / 90.0d) * latScale;
+            double attA0 = aggressive ? 25.0d : 35.0d;
+            double attB0 = aggressive ? 40.0d : 55.0d;
+            double attA = attA0 * (0.90d + 0.20d * Math.Pow(gN, 0.30d) + 0.10d * Math.Pow(rN, 0.20d));
+            double attB = attB0 * (0.90d + 0.20d * Math.Pow(gN, 0.25d));
             result.AttitudeLossDv = attA + attB * incFactor;
+        }
+
+        private static double Clamp(double value, double min, double max)
+        {
+            return Math.Max(min, Math.Min(max, value));
+        }
+
+        private static void GetNormalizedBodyScales(CelestialBody body, out double gN, out double pN, out double dN, out double rN)
+        {
+            if (body == null)
+            {
+                gN = 1.0d;
+                pN = 1.0d;
+                dN = 1.0d;
+                rN = 1.0d;
+                return;
+            }
+
+            gN = Clamp(body.GeeASL, 0.05d, 4.0d);
+            var seaLevelPressure = body.atmosphere ? body.atmospherePressureSeaLevel : 0.0d;
+            pN = Clamp(seaLevelPressure / OneAtmKPa, 0.0d, 15.0d);
+            var atmosphereDepth = body.atmosphere ? body.atmosphereDepth : 0.0d;
+            dN = Clamp(atmosphereDepth / KerbinAtmoDepthMeters, 0.0d, 12.0d);
+            rN = Clamp(body.Radius / KerbinRadiusMeters, 0.2d, 15.0d);
         }
     }
 }
