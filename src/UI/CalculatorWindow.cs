@@ -447,6 +447,8 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(4);
             GUILayout.BeginVertical(_styleManager.SectionStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_VesselName")}: {_lastStats.VesselName}", _styleManager.LabelStyle);
+            var payloadDisplay = _payloadCutoffStage < 0 ? 0.0d : _lastResult.EstimatedPayloadTons;
+            GUILayout.Label($"{Loc("#LOC_OPC_PayloadMass")}: {payloadDisplay:N3} t", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_WetMass")}: {FormatNum(_lastStats.WetMassTons)} t", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_DryMass")}: {FormatNum(_lastStats.DryMassTons)} t", _styleManager.LabelStyle);
             GUILayout.EndVertical();
@@ -457,9 +459,7 @@ namespace OrbitalPayloadCalculator.UI
             var rotSign = _lastResult.RotationDv >= 0.0d ? "+" : "";
             GUILayout.Label($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatNum(_lastResult.RotationDv)} m/s", _styleManager.LabelStyle);
             GUILayout.Label($"{Loc("#LOC_OPC_RequiredDv")}: {FormatNum(_lastResult.RequiredDv)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")} (Profile): {FormatNum(_lastResult.AvailableDv)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")} (Sea): {FormatNum(_lastResult.AvailableDvSeaLevel)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")} (Vac): {FormatNum(_lastResult.AvailableDvVacuum)} m/s", _styleManager.LabelStyle);
+            GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")}: {FormatNum(_lastResult.AvailableDv)} m/s", _styleManager.LabelStyle);
             GUILayout.EndVertical();
 
             GUILayout.Space(4);

@@ -60,11 +60,12 @@ namespace OrbitalPayloadCalculator.UI
                 fontStyle = FontStyle.Italic
             };
             FieldStyle = new GUIStyle(skin.textField) { fontSize = fontSize };
-            ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize };
+            ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter };
             var activeColor = new Color(0.4f, 0.85f, 1f);
             ActiveButtonStyle = new GUIStyle(skin.button)
             {
                 fontSize = fontSize,
+                alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = activeColor },
                 hover = { textColor = activeColor },
                 active = { textColor = activeColor },
