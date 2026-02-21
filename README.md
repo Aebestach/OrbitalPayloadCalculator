@@ -1,7 +1,7 @@
 # Orbital Payload Calculator
 
 <div align="center">
-<占位符>
+<placeholder>
 
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
