@@ -1,8 +1,8 @@
 # Orbital Payload Calculator
 
-<img src="https://imgur.com/ryDQSmm.jpg" alt="Banner"/>
-
 <div align="center">
+    
+<img src="https://imgur.com/ryDQSmm.jpg" alt="Banner"/>
     
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
