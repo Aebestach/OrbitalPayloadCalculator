@@ -10,13 +10,13 @@
 
 | 数据 | 计算方式 | 使用的天体属性 |
 |------|----------|----------------|
-| **轨道速度** | \(v = \sqrt{\mu \cdot (2/r_{Pe} - 1/a)}\) | `gravParameter`、`Radius`、轨道高度 |
-| **平面变轨 ΔV** | \(2v \sin(\theta/2)\) | 轨道速度、发射纬度、目标倾角 |
+| **轨道速度** | `v = √(μ × (2/rPe − 1/a))` | `gravParameter`、`Radius`、轨道高度 |
+| **平面变轨 ΔV** | `2v × sin(θ/2)` | 轨道速度、发射纬度、目标倾角 |
 | **自转增益/损失** | 赤道速度 + 纬度修正 | `rotationPeriod`、`Radius` |
 | **阶段 ΔV** | 齐奥尔科夫斯基公式 | 质量、推进剂、Isp |
 | **大气 Isp 混合** | 采样 `GetPressure(h)` 曲线加权 | `atmosphereDepth`、`atmospherePressureSeaLevel` |
-| **仿真中重力损失** | 时间步进：\(g = \mu/R^2\) | `gravParameter`、`Radius` |
-| **仿真中大气密度** | \(\rho = p/(R_{空气} \cdot T)\) | `GetPressure(h)`、`GetTemperature(h)` |
+| **仿真中重力损失** | 时间步进 `g = μ/R²` | `gravParameter`、`Radius` |
+| **仿真中大气密度** | `ρ = p/(R_air × T)` | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
 
 ---
@@ -31,7 +31,7 @@
 | **重力损失**（无仿真时） | `FallbackEstimate` 经验公式 | 无推力/Isp 数据时使用的替代公式 |
 | **大气损失**（无仿真时） | `atmoA + atmoB` 经验公式 | 基于 gN、pN、dN 归一化缩放因子的拟合公式 |
 | **姿态损失** | `baseA + baseB × incFactor` | 无论仿真与否都使用经验系数 |
-| **Turn Start Speed** | \(80 × gN^{0.25} × (...)\) | 基于重力、大气归一化得出的启转速度 |
+| **Turn Start Speed** | `80 × gN^0.25 × (...)` | 基于重力、大气归一化得出的启转速度 |
 | **Turn Start Altitude** | `atmoHeight × (0.01 + 0.004×ln(1+pN))` | 启转高度估计 |
 | **大气 Isp 混合权重** | `1 - 0.5×i/N` | 对"火箭在各高度停留时间"的近似权重 |
 
