@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
 
-[English](README.md) | [中文](README-CN.md)
+[English](README.md) | [中文](README_CN.md)
 
 </div>
 
