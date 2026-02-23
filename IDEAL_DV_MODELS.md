@@ -45,15 +45,15 @@ From ½v² = ΔE:
 
 ### Circular Orbit
 
-\[
+$$
 \Delta v_A = \sqrt{ 2μ \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
-\]
+$$
 
 ### Elliptic Orbit
 
-\[
+$$
 \Delta v_A = \sqrt{ 2μ \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
-\]
+$$
 
 ---
 
@@ -74,15 +74,15 @@ As r → ∞: Δv_A → √(2μ/r₀) (escape speed)
 
 First burn (to transfer ellipse):
 
-\[
+$$
 \mathrm{burn1} = \sqrt{\frac{\mu}{r_0}} \cdot \sqrt{ \frac{2r}{r_0 + r} }
-\]
+$$
 
 Second burn (circularize at r):
 
-\[
+$$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r} } \right)
-\]
+$$
 
 Total: Δv_B = burn1 + burn2
 
@@ -90,17 +90,17 @@ Total: Δv_B = burn1 + burn2
 
 ## Case 2: Elliptic Target (rPe < rAp)
 
-\[
+$$
 \mathrm{burn1} = \sqrt{\frac{\mu}{r_0}} \cdot \sqrt{ \frac{2r_\mathrm{Pe}}{r_0 + r_\mathrm{Pe}} }
-\]
+$$
 
-\[
+$$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r_\mathrm{Pe}}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r_\mathrm{Pe}} } \right)
-\]
+$$
 
-\[
+$$
 \mathrm{burn3} = \sqrt{ \frac{2μ\,r_\mathrm{Ap}}{ r_\mathrm{Pe}(r_\mathrm{Pe} + r_\mathrm{Ap}) } } - \sqrt{ \frac{\mu}{r_\mathrm{Pe}} }
-\]
+$$
 
 Total: Δv_B = burn1 + burn2 + burn3
 

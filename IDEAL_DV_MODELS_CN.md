@@ -45,15 +45,15 @@ e     = (rAp − rPe) / (rAp + rPe)  （椭圆偏心率）
 
 ### 圆轨道
 
-\[
+$$
 \Delta v_A = \sqrt{ 2μ \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
-\]
+$$
 
 ### 椭圆轨道
 
-\[
+$$
 \Delta v_A = \sqrt{ 2μ \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
-\]
+$$
 
 ---
 
@@ -74,15 +74,15 @@ e     = (rAp − rPe) / (rAp + rPe)  （椭圆偏心率）
 
 第一段（进入转移椭圆）：
 
-\[
+$$
 \mathrm{burn1} = \sqrt{\frac{\mu}{r_0}} \cdot \sqrt{ \frac{2r}{r_0 + r} }
-\]
+$$
 
 第二段（在 r 处圆化）：
 
-\[
+$$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r} } \right)
-\]
+$$
 
 总 Δv：Δv_B = burn1 + burn2
 
@@ -90,17 +90,17 @@ e     = (rAp − rPe) / (rAp + rPe)  （椭圆偏心率）
 
 ## 情况 2：目标为椭圆轨道 (rPe < rAp)
 
-\[
+$$
 \mathrm{burn1} = \sqrt{\frac{\mu}{r_0}} \cdot \sqrt{ \frac{2r_\mathrm{Pe}}{r_0 + r_\mathrm{Pe}} }
-\]
+$$
 
-\[
+$$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r_\mathrm{Pe}}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r_\mathrm{Pe}} } \right)
-\]
+$$
 
-\[
+$$
 \mathrm{burn3} = \sqrt{ \frac{2μ\,r_\mathrm{Ap}}{ r_\mathrm{Pe}(r_\mathrm{Pe} + r_\mathrm{Ap}) } } - \sqrt{ \frac{\mu}{r_\mathrm{Pe}} }
-\]
+$$
 
 总 Δv：Δv_B = burn1 + burn2 + burn3
 
