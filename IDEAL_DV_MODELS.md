@@ -59,10 +59,10 @@ $$
 
 ## Properties
 
-✔ Global minimum Δv  
-✔ Continuous-thrust limit solution  
-✔ No Hohmann assumption  
-✔ Valid for any target radius  
+- Global minimum Δv  
+- Continuous-thrust limit solution  
+- No Hohmann assumption  
+- Valid for any target radius  
 
 As r → ∞: Δv_A → √(2μ/r₀) (escape speed)
 
@@ -108,10 +108,10 @@ Total: Δv_B = burn1 + burn2 + burn3
 
 ## Properties
 
-✔ Clear structure  
-✔ Direct mapping to maneuver steps  
-✔ Suitable for distant orbits  
-✔ Converges to Model A when r ≫ r₀ or rAp ≫ rPe  
+- Clear structure  
+- Direct mapping to maneuver steps  
+- Suitable for distant orbits  
+- Converges to Model A when r ≫ r₀ or rAp ≫ rPe  
 
 As r → ∞: Δv_B → √(2μ/r₀)
 
@@ -123,41 +123,44 @@ Define: α = a/r₀ (a = semi-major axis), e = (rAp−rPe)/(rAp+rPe)
 
 ---
 
-## 1️⃣ Low Orbit Region
+## 1. Low Orbit Region
 
 **α < 1.5**
 
+Characteristics:
 - Target near bottom of gravity well
 - Hohmann structure adds structural error
 - Low-eccentricity ellipse may slightly increase Δv
 
-Recommendation: ✔ Use Model A
+Recommendation: Use Model A
 
 ---
 
-## 2️⃣ Intermediate Orbit Region
+## 2. Intermediate Orbit Region
 
 **1.5 ≤ α ≤ 2.0**
 
+Characteristics:
 - Difference between models decays quickly
 - Low eccentricity (e < 0.1): negligible Δv difference
 - High eccentricity (e ≥ 0.1): prefer Model B
 
 Recommendation:
-- ✔ Low eccentricity: Model A
-- ✔ High eccentricity: Model B
+- Low eccentricity: Model A
+- High eccentricity: Model B
 
 ---
 
-## 3️⃣ High / Distant Orbit Region
+## 3. High / Distant Orbit Region
 
 **α > 2.0**
 
+Characteristics:
 - Orbit near gravity well edge
 - Models nearly equivalent
 - Hohmann structure matches practical operations
 
-Recommendation: ✔ Use Model B
+Recommendation: Use Model B
 
 ---
 
@@ -168,18 +171,18 @@ Compute semi-major axis a = (rPe + rAp) / 2
 Compute ratio α = a / r₀
 Compute eccentricity e = (rAp − rPe) / (rAp + rPe)
 
-# 1️⃣ Low orbit
+# 1. Low orbit
 if α < 1.5:
     use Model A
 
-# 2️⃣ Intermediate orbit
+# 2. Intermediate orbit
 else if 1.5 ≤ α ≤ 2.0:
     if e < 0.1:
         use Model A
     else:
         use Model B
 
-# 3️⃣ High / distant orbit
+# 3. High / distant orbit
 else:  # α > 2.0
     use Model B
 ```
