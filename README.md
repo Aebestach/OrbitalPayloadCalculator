@@ -110,11 +110,11 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 <div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/gFr2pXb.jpg" alt="Incorporate Payload" width="1000"/>
+    <img src="https://i.imgur.com/lf9kt8u.jpg" alt="Incorporate Payload" width="1000"/>
     <p align="center">Incorporate Payload</p>
   </div>
   <div style="text-align: center;">
-    <img src="https://i.imgur.com/lf9kt8u.jpg" alt="Pure Rocket" width="1000"/>
+    <img src="https://i.imgur.com/gFr2pXb.jpg" alt="Pure Rocket" width="1000"/>
     <p align="center">Pure Rocket</p>
   </div>
 </div>
