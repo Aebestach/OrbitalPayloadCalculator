@@ -5,13 +5,14 @@ namespace OrbitalPayloadCalculator.Calculation
 {
     internal sealed class LossModelConfig
     {
-        public bool AutoEstimate = true;
         public bool AggressiveEstimate;
         public bool OverrideGravityLoss;
         public bool OverrideAtmosphericLoss;
         public bool OverrideAttitudeLoss;
 
         public double TurnStartSpeed = -1.0d;
+        public double CdACoefficient = -1.0d;
+        public double TurnStartAltitude = -1.0d;
         public double ManualGravityLossDv;
         public double ManualAtmosphericLossDv;
         public double ManualAttitudeLossDv;
@@ -23,6 +24,18 @@ namespace OrbitalPayloadCalculator.Calculation
         public double AtmosphericLossDv;
         public double AttitudeLossDv;
         public double TotalDv;
+
+        /// <summary>Values actually used in simulation; -1 if N/A (e.g. fallback).</summary>
+        public double UsedTurnStartSpeed = -1.0d;
+        public double UsedCdA = -1.0d;
+        public double UsedCdACoefficient = -1.0d;
+        public double UsedTurnStartAltitude = -1.0d;
+        public bool UsedTurnStartSpeedManual;
+        public bool UsedCdAManual;
+        public bool UsedCdAFromFlight;
+        public bool UsedTurnStartAltitudeManual;
+        /// <summary>True when altitude was derived from user's manual turn speed (not from mode).</summary>
+        public bool UsedTurnStartAltitudeDerivedFromSpeed;
     }
 
     internal static class LossModel
@@ -38,7 +51,7 @@ namespace OrbitalPayloadCalculator.Calculation
         {
             var estimate = new LossEstimate();
 
-            if (config.AutoEstimate && body != null)
+            if (body != null)
             {
                 bool canSim = stats != null && stats.HasVessel &&
                               stats.TotalThrustkN > 0d && stats.VacuumIspSeconds > 0d &&
@@ -47,7 +60,8 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (canSim)
                     SimulateAscent(body, stats, target.PeriapsisAltitudeMeters,
                         target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
-                        estimate, config.AggressiveEstimate, config.TurnStartSpeed, extraPayloadTons);
+                        estimate, config.AggressiveEstimate, config.TurnStartSpeed,
+                        config.CdACoefficient, config.TurnStartAltitude, extraPayloadTons);
                 else
                     FallbackEstimate(body, target.TargetInclinationDegrees,
                         target.LaunchLatitudeDegrees, estimate, config.AggressiveEstimate);
@@ -76,12 +90,13 @@ namespace OrbitalPayloadCalculator.Calculation
         /// pitch-over  gamma = 90° * (1 - progress^0.7)  that keeps the rocket
         /// near-vertical in the dense lower atmosphere and pitches over gradually.
         ///
-        /// Drag area (CdA) is estimated heuristically from wet mass because
-        /// actual part geometry is unavailable in the editor.
+        /// Drag area (CdA): both Editor and Flight use user CdA coefficient or heuristic (mass^0.5).
         /// </summary>
         private static void SimulateAscent(CelestialBody body, VesselStats stats,
             double targetAltM, double inclinationDeg, double launchLatDeg,
-            LossEstimate result, bool aggressive, double userTurnStartSpeed, double extraPayloadTons = 0.0d)
+            LossEstimate result, bool aggressive, double userTurnStartSpeed,
+            double userCdACoefficient, double userTurnStartAltitude,
+            double extraPayloadTons = 0.0d)
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
@@ -94,6 +109,8 @@ namespace OrbitalPayloadCalculator.Calculation
                 : Clamp(autoTurn, 40.0d, 220.0d);
             if (double.IsNaN(turnStartSpeed) || double.IsInfinity(turnStartSpeed))
                 turnStartSpeed = baseTurn;
+            result.UsedTurnStartSpeed = turnStartSpeed;
+            result.UsedTurnStartSpeedManual = userTurnStartSpeed > 0.0d;
 
             double massKg = (stats.WetMassTons + extraPayloadTons) * 1000.0d;
             double dryMassKg = (stats.DryMassTons + extraPayloadTons) * 1000.0d;
@@ -102,15 +119,26 @@ namespace OrbitalPayloadCalculator.Calculation
             double seaIsp = stats.SeaLevelIspSeconds > 0d ? stats.SeaLevelIspSeconds : vacIsp;
 
             double totalWetTons = stats.WetMassTons + extraPayloadTons;
-            double cdaCoeff = aggressive ? 0.7d : 1.0d;
-            double CdA = cdaCoeff * Math.Pow(totalWetTons, 0.5d);
+            double coeff = userCdACoefficient > 0d ? userCdACoefficient : (aggressive ? 0.7d : 1.0d);
+            double CdAFixed = coeff * Math.Pow(totalWetTons, 0.5d);
+            result.UsedCdA = CdAFixed;
+            result.UsedCdACoefficient = coeff;
+            result.UsedCdAManual = userCdACoefficient > 0d;
+            result.UsedCdAFromFlight = false;
 
             bool hasAtmo = body.atmosphere && body.atmosphereDepth > 0d;
             double atmoHeight = hasAtmo ? body.atmosphereDepth : 0d;
             double speedRatio = turnStartSpeed / 80.0d;
-            double turnStartAlt = hasAtmo
-                ? Clamp(atmoHeight * (0.010d + 0.004d * Math.Log(1.0d + pN)), 800.0d, 22000.0d) * speedRatio
-                : 300.0d * speedRatio;
+            double turnStartAlt;
+            if (userTurnStartAltitude > 0d)
+                turnStartAlt = userTurnStartAltitude;
+            else
+                turnStartAlt = hasAtmo
+                    ? Clamp(atmoHeight * (0.010d + 0.004d * Math.Log(1.0d + pN)), 800.0d, 22000.0d) * speedRatio
+                    : 300.0d * speedRatio;
+            result.UsedTurnStartAltitude = turnStartAlt;
+            result.UsedTurnStartAltitudeManual = userTurnStartAltitude > 0d;
+            result.UsedTurnStartAltitudeDerivedFromSpeed = userTurnStartAltitude <= 0d && userTurnStartSpeed > 0d;
             double turnEndAlt = Math.Max(turnStartAlt + 1000.0d, targetAltM);
 
             double altitude = 0d;
@@ -159,6 +187,8 @@ namespace OrbitalPayloadCalculator.Calculation
                     }
                 }
 
+                double CdA = CdAFixed;
+                if (CdA <= 0d) CdA = (aggressive ? 0.7d : 1.0d) * Math.Pow(totalWetTons, 0.5d);
                 double drag = 0.5d * density * velocity * velocity * CdA * machMult;
                 double sinG = Math.Sin(gamma);
 
@@ -180,7 +210,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 {
                     double progress = Math.Max(0d, Math.Min(1d,
                         (altitude - turnStartAlt) / (turnEndAlt - turnStartAlt)));
-                    double turnExponent = aggressive ? 0.55d : 0.7d;
+                    double turnExponent = aggressive ? 0.50d : 0.7d;
                     gamma = (Math.PI / 2.0d) * (1.0d - Math.Pow(progress, turnExponent));
                     if (gamma < 0.02d) gamma = 0.02d;
                 }
@@ -248,6 +278,37 @@ namespace OrbitalPayloadCalculator.Calculation
             double attA = attA0 * (0.90d + 0.20d * Math.Pow(gN, 0.30d) + 0.10d * Math.Pow(rN, 0.20d));
             double attB = attB0 * (0.90d + 0.20d * Math.Pow(gN, 0.25d));
             result.AttitudeLossDv = attA + attB * incFactor;
+        }
+
+        /// <summary>Resolves turn start speed and altitude for use by ascent simulations. Returns the same values that SimulateAscent would use.</summary>
+        public static void ResolveTurnParams(CelestialBody body, bool aggressive, double userTurnStartSpeed,
+            double userTurnStartAltitude, out double turnStartSpeed, out double turnStartAltitude)
+        {
+            if (body == null)
+            {
+                turnStartSpeed = 70.0d;
+                turnStartAltitude = 840.0d;
+                return;
+            }
+            GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
+            var baseTurn = aggressive ? 60.0d : 80.0d;
+            var autoTurn = baseTurn * Math.Pow(gN, 0.25d) *
+                           (0.92d + 0.18d * Math.Log(1.0d + pN) + 0.12d * Math.Pow(dN, 0.3d));
+            turnStartSpeed = userTurnStartSpeed > 0.0d
+                ? userTurnStartSpeed
+                : Clamp(autoTurn, 40.0d, 220.0d);
+            if (double.IsNaN(turnStartSpeed) || double.IsInfinity(turnStartSpeed))
+                turnStartSpeed = baseTurn;
+
+            bool hasAtmo = body.atmosphere && body.atmosphereDepth > 0d;
+            double atmoHeight = hasAtmo ? body.atmosphereDepth : 0d;
+            double speedRatio = turnStartSpeed / 80.0d;
+            if (userTurnStartAltitude > 0d)
+                turnStartAltitude = userTurnStartAltitude;
+            else
+                turnStartAltitude = hasAtmo
+                    ? Clamp(atmoHeight * (0.010d + 0.004d * Math.Log(1.0d + pN)), 800.0d, 22000.0d) * speedRatio
+                    : 300.0d * speedRatio;
         }
 
         private static double Clamp(double value, double min, double max)
