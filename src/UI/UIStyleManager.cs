@@ -9,6 +9,7 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle LabelStyle { get; private set; }
         public GUIStyle HeaderStyle { get; private set; }
         public GUIStyle SmallLabelStyle { get; private set; }
+        public GUIStyle SmallBoldLabelStyle { get; private set; }
         public GUIStyle FieldStyle { get; private set; }
         public GUIStyle ButtonStyle { get; private set; }
         public GUIStyle SelectedButtonStyle { get; private set; }
@@ -31,7 +32,6 @@ namespace OrbitalPayloadCalculator.UI
             DisposeStyles();
             _fontSize = clamped;
             BuildStyles(clamped);
-            GUIUtility.ExitGUI();
         }
 
         public void Dispose()
@@ -58,7 +58,12 @@ namespace OrbitalPayloadCalculator.UI
             SmallLabelStyle = new GUIStyle(skin.label)
             {
                 fontSize = Mathf.Max(11, fontSize - 2),
-                fontStyle = FontStyle.Italic
+                fontStyle = FontStyle.Normal
+            };
+            SmallBoldLabelStyle = new GUIStyle(skin.label)
+            {
+                fontSize = Mathf.Max(11, fontSize - 2),
+                fontStyle = FontStyle.Bold
             };
             FieldStyle = new GUIStyle(skin.textField) { fontSize = fontSize };
             ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter };
@@ -109,6 +114,7 @@ namespace OrbitalPayloadCalculator.UI
             HeaderStyle = null;
             CenteredHeaderStyle = null;
             SmallLabelStyle = null;
+            SmallBoldLabelStyle = null;
             FieldStyle = null;
             ButtonStyle = null;
             SelectedButtonStyle = null;

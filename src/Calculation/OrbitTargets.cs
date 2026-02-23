@@ -36,6 +36,13 @@ namespace OrbitalPayloadCalculator.Calculation
 
         public string ClampAltitudes()
         {
+            if (LaunchBody != null)
+            {
+                var soiLimit = LaunchBody.sphereOfInfluence - LaunchBody.Radius;
+                if (ApoapsisAltitudeMeters >= soiLimit || PeriapsisAltitudeMeters >= soiLimit)
+                    return "#LOC_OPC_ApoapsisExceedsSOI";
+            }
+
             var minAltitude = 1000.0d;
             var maxAltitude = LaunchBody != null
                 ? (double)Mathf.Max((float)(LaunchBody.sphereOfInfluence - LaunchBody.Radius - 1000.0d), 1000.0f)
@@ -50,13 +57,6 @@ namespace OrbitalPayloadCalculator.Calculation
 
             PeriapsisAltitudeMeters = Math.Max(minAltitude, Math.Min(PeriapsisAltitudeMeters, maxAltitude));
             ApoapsisAltitudeMeters = Math.Max(PeriapsisAltitudeMeters, Math.Min(ApoapsisAltitudeMeters, maxAltitude));
-
-            if (LaunchBody != null)
-            {
-                var rAp = LaunchBody.Radius + ApoapsisAltitudeMeters;
-                if (rAp >= LaunchBody.sphereOfInfluence)
-                    return "#LOC_OPC_ApoapsisExceedsSOI";
-            }
 
             return null;
         }

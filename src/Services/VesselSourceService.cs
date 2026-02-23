@@ -202,14 +202,42 @@ namespace OrbitalPayloadCalculator.Services
                     totalWeightedVac += engine.maxThrust * vacIsp;
                     totalWeightedSea += engine.maxThrust * seaIsp;
 
+                    bool isSolid = false;
+                    double solidPropMass = 0d;
                     foreach (var prop in engine.propellants)
                     {
                         if (!string.IsNullOrEmpty(prop.name))
                             globalPropNames.Add(prop.name);
 
                         if (prop.name == "SolidFuel")
+                        {
                             si.HasSolidFuel = true;
+                            isSolid = true;
+                            foreach (PartResource res in part.Resources)
+                            {
+                                if (res.resourceName == "SolidFuel")
+                                    solidPropMass += res.amount * res.info.density;
+                            }
+                        }
                     }
+
+                    var entry = new EngineEntry
+                    {
+                        ThrustkN = engine.maxThrust,
+                        VacuumIsp = vacIsp,
+                        SeaLevelIsp = seaIsp,
+                        IsSolid = isSolid,
+                        PropellantMassTons = isSolid ? solidPropMass : 0d,
+                        PartDryMassTons = partDryMass,
+                        PartInstanceId = part.GetInstanceID(),
+                        SeparationGroupIndex = -1
+                    };
+
+                    SampleAtmosphereCurve(engine, entry);
+                    if (isSolid)
+                        SampleThrustCurve(engine, entry);
+
+                    si.Engines.Add(entry);
                 }
             }
 
@@ -243,6 +271,8 @@ namespace OrbitalPayloadCalculator.Services
             stageList.Sort((a, b) => a.StageNumber.CompareTo(b.StageNumber));
             stats.Stages = stageList;
 
+            BuildSeparationGroups(parts, stageMap, globalPropNames);
+
             stats.WetMassTons = totalWet;
             stats.DryMassTons = Math.Max(0.01d, totalWet - totalPropellant);
             stats.TotalThrustkN = totalThrust;
@@ -250,6 +280,165 @@ namespace OrbitalPayloadCalculator.Services
             stats.SeaLevelIspSeconds = totalThrust > 0 ? totalWeightedSea / totalThrust : 0;
 
             return stats;
+        }
+
+        private static void SampleAtmosphereCurve(ModuleEngines engine, EngineEntry entry)
+        {
+            if (engine.atmosphereCurve == null) return;
+            const int n = 11;
+            entry.PressureSamples = new double[n];
+            entry.IspSamples = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                double p = i / (double)(n - 1);
+                entry.PressureSamples[i] = p;
+                entry.IspSamples[i] = (double)engine.atmosphereCurve.Evaluate((float)p);
+            }
+        }
+
+        private static void SampleThrustCurve(ModuleEngines engine, EngineEntry entry)
+        {
+            if (!engine.useThrustCurve || engine.thrustCurve == null) return;
+            const int n = 21;
+            entry.ThrustCurveFractions = new double[n];
+            entry.ThrustCurveMultipliers = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                double f = i / (double)(n - 1);
+                entry.ThrustCurveFractions[i] = f;
+                entry.ThrustCurveMultipliers[i] = (double)engine.thrustCurve.Evaluate((float)f);
+            }
+        }
+
+        /// <summary>
+        /// Finds decouplers in ALL stages that fire after the bottom stage. When decouplers fire,
+        /// they separate boosters (liquid or solid). We model: when engines on separated parts exhaust,
+        /// subtract that mass from the stack. Multi-pair boosters (SRBs/liquid) separate at different
+        /// stages (e.g. stage 5, 4, 3); we must detect all of them, not just nextStage.
+        /// Uses multiple detection paths: part.children, AttachNode.attachedPart (excluding parent), and parent-inverse.
+        /// </summary>
+        private static void BuildSeparationGroups(IList<Part> parts, Dictionary<int, StageInfo> stageMap, HashSet<string> liquidPropNames)
+        {
+            if (parts == null || parts.Count == 0 || stageMap == null) return;
+
+            int maxPropStageNum = -1;
+            foreach (var si in stageMap.Values)
+            {
+                if (si.HasEngines && si.PropellantMassTons > 0.0d && si.StageNumber > maxPropStageNum)
+                    maxPropStageNum = si.StageNumber;
+            }
+            if (maxPropStageNum <= 0)
+                return;
+
+            StageInfo bottomStage;
+            if (!stageMap.TryGetValue(maxPropStageNum, out bottomStage)
+                || bottomStage == null || bottomStage.Engines == null || bottomStage.Engines.Count == 0)
+                return;
+
+            var decouplers = new List<Part>();
+            for (int st = maxPropStageNum - 1; st >= 0; st--)
+            {
+                foreach (var part in parts)
+                {
+                    if (part == null || IsLaunchClamp(part)) continue;
+                    if (part.inverseStage != st) continue;
+                    if (!part.Modules.Contains("ModuleDecouple") && !part.Modules.Contains("ModuleAnchoredDecoupler"))
+                        continue;
+                    decouplers.Add(part);
+                }
+            }
+            if (decouplers.Count == 0)
+                return;
+
+            var releasedByDecoupler = new List<HashSet<int>>();
+            foreach (var dec in decouplers)
+            {
+                var released = new HashSet<int>();
+                // Path 1: part.children (standard hierarchy)
+                foreach (Part child in dec.children ?? Enumerable.Empty<Part>())
+                    CollectPartAndDescendants(child, released);
+                // Path 2: AttachNode.attachedPart for radial/stack (exclude parent - core stays)
+                if (dec.attachNodes != null)
+                {
+                    foreach (var an in dec.attachNodes)
+                    {
+                        if (an?.attachedPart == null) continue;
+                        if (an.attachedPart == dec.parent) continue;
+                        CollectPartAndDescendants(an.attachedPart, released);
+                    }
+                }
+                // Path 3: inverse - parts whose parent is this decoupler (radial booster attached to decoupler)
+                foreach (var p in parts)
+                {
+                    if (p == null || p.parent != dec) continue;
+                    CollectPartAndDescendants(p, released);
+                }
+                if (released.Count > 0)
+                {
+                    releasedByDecoupler.Add(released);
+                }
+            }
+
+            if (releasedByDecoupler.Count == 0)
+                return;
+
+            var liquidNames = liquidPropNames != null
+                ? new HashSet<string>(liquidPropNames.Where(n => !string.Equals(n, "SolidFuel", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var releasedIds in releasedByDecoupler)
+            {
+                double groupDryMass = 0d;
+                double groupLiquidPropTons = 0d;
+                foreach (var p in parts)
+                {
+                    if (p == null || !releasedIds.Contains(p.GetInstanceID())) continue;
+                    double partTotalMass = (double)p.mass;
+                    double partResourceMass = 0d;
+                    if (p.Resources != null)
+                    {
+                        foreach (PartResource res in p.Resources)
+                        {
+                            if (res?.info == null) continue;
+                            double m = res.amount * res.info.density;
+                            partResourceMass += m;
+                            if (liquidNames.Count > 0 && liquidNames.Contains(res.resourceName))
+                                groupLiquidPropTons += m;
+                        }
+                    }
+                    double partDryMass = partResourceMass < partTotalMass - 0.001d
+                        ? partTotalMass - partResourceMass
+                        : partTotalMass;
+                    groupDryMass += Math.Max(0.001d, partDryMass);
+                }
+                if (groupDryMass <= 0d) continue;
+
+                var group = new SeparationGroup
+                {
+                    GroupDryMassTons = groupDryMass,
+                    GroupLiquidPropellantTons = groupLiquidPropTons,
+                    EngineIndices = new HashSet<int>()
+                };
+                for (int i = 0; i < bottomStage.Engines.Count; i++)
+                {
+                    if (releasedIds.Contains(bottomStage.Engines[i].PartInstanceId))
+                    {
+                        group.EngineIndices.Add(i);
+                        bottomStage.Engines[i].SeparationGroupIndex = bottomStage.SeparationGroups.Count;
+                    }
+                }
+                if (group.EngineIndices.Count > 0)
+                    bottomStage.SeparationGroups.Add(group);
+            }
+        }
+
+        private static void CollectPartAndDescendants(Part p, HashSet<int> outIds)
+        {
+            if (p == null || outIds.Contains(p.GetInstanceID())) return;
+            outIds.Add(p.GetInstanceID());
+            if (p.children == null) return;
+            foreach (Part c in p.children)
+                CollectPartAndDescendants(c, outIds);
         }
 
         private static bool IsLaunchClamp(Part part)
