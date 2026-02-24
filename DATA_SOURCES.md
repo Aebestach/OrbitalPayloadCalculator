@@ -45,14 +45,14 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 
 | Data | Estimation Method | Notes |
 |------|-------------------|-------|
-| **CdA (Drag Area)** | Both Editor and Flight: `Cd × √(wet mass)` with user Cd (0.3–2.0) or default 0.7/1.0 | Cd coefficient × √mass heuristic |
+| **CdA (Drag Area)** | Both Editor and Flight: `Cd × √(wet mass)` with user Cd (0.3–2.0) or default 0.50/1.0/1.5 (Optimistic/Normal/Pessimistic) | Cd coefficient × √mass heuristic |
 | **Gravity Loss (no simulation)** | `FallbackEstimate` empirical formula | Used when thrust/Isp data is missing |
 | **Atmospheric Loss (no simulation)** | `atmoA + atmoB` empirical formula | Fitted using gN, pN, dN body scales |
 | **Attitude Loss** | `baseA + baseB × incFactor` | Empirical coefficients; typical reference in table below |
 | **Turn Start Speed** | `80 × gN^0.25 × (...)` | Gravity and atmosphere scaling |
 | **Turn Start Altitude** | `atmoHeight × (0.01 + 0.004×ln(1+pN))` | Heuristic turn altitude |
 | **Atmospheric ISP Blend Weights** | `1 - 0.5×i/N` | Approximate "time spent at each altitude" |
-| **Turn Exponent (gravity turn)** | Optimistic: 0.50; Normal: 0.58 (bottom-stage sim) or 0.70 (loss model) | Empirical; controls pitch-over rate |
+| **Turn Exponent (gravity turn)** | Optimistic: 0.40 (bottom-stage) or 0.45 (loss); Normal: 0.58 or 0.70; Pessimistic: 0.65 or 0.80 | Empirical; controls pitch-over rate |
 
 ### Typical Attitude Loss Reference
 
@@ -64,9 +64,17 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 
 ---
 
+## Estimate Mode Parameters
+
+| Mode | Cd | Turn Start Speed | Turn Exp. Bottom | Turn Exp. Full |
+|------|----|------------------|------------------|----------------|
+| Optimistic | 0.50 | 55 m/s base | 0.40 | 0.45 |
+| Normal | 1.0 | 80 m/s base | 0.58 | 0.70 |
+| Pessimistic | 1.5 | 95 m/s base | 0.65 | 0.80 |
+
 ## Parameter Priority
 
-**Advanced Settings** (gravity/atmosphere/attitude overrides, turn speed, Cd coefficient, turn altitude) **always override** the Normal / Optimistic estimate button defaults.
+**Advanced Settings** (gravity/atmosphere/attitude overrides, turn speed, Cd coefficient, turn altitude) **always override** the Pessimistic / Normal / Optimistic estimate button defaults.
 
 ---
 

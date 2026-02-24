@@ -44,14 +44,15 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     *   Iteratively solves for the payload mass that matches your rocket's available Delta-V against the required Delta-V.
 *   **📉 Advanced Loss Modeling**
     *   **Simulation-based:** Runs a time-stepped ascent simulation using the celestial body's actual atmospheric pressure and temperature curves.
-    *   **Gravity & Drag:** Automatically estimates gravity losses and atmospheric drag based on vessel TWR and aerodynamics. CdA uses the same heuristic (Cd × √mass) in both Editor and Flight; user Cd or default 0.7/1.0.
-    *   **Estimate Modes:** Mutually exclusive **Normal** and **Optimistic** modes; Advanced Settings parameters always override both. In **Optimistic** mode, the ascent simulation uses a more aggressive turn exponent (0.50) for earlier pitch-over, reducing modeled gravity loss.
+    *   **Gravity & Drag:** Automatically estimates gravity losses and atmospheric drag based on vessel TWR and aerodynamics. CdA uses the same heuristic (Cd × √mass) in both Editor and Flight; user Cd or default 0.50/1.0/1.5 (Optimistic/Normal/Pessimistic).
+    *   **Estimate Modes:** Mutually exclusive **Pessimistic**, **Normal**, and **Optimistic** modes; Advanced Settings parameters always override all. **Optimistic** uses Cd 0.50 and aggressive turn exponent (0.40/0.45) for earlier pitch-over; **Pessimistic** uses Cd 1.5 and gentler turn (0.65/0.80) for conservative estimates.
 *   **🌍 Multi-Body & Rotation**
     *   Supports any celestial body (Kerbin, Eve, Duna, modded planets, etc.).
     *   Accounts for planetary rotation (launching East vs. West) and launch latitude.
 *   **🔄 Staged Analysis**
     *   Properly handles multi-stage vessels.
     *   Blends Vacuum and Sea-Level ISP for atmospheric stages based on pressure.
+    *   **Engine Role Classification:** Automatically classifies engines into Main / Solid / Electric / Retro / Settling / Escape Tower. Only Main/Solid/Electric contribute to Delta-V and fuel allocation; non-participating engines still keep mass/drag impact.
     *   **Separation Groups:** Detects decouplers in *all* stages after the bottom stage, so multi-pair boosters (SRBs or liquid) that separate at different times are correctly modeled. Each booster pair's dry mass is subtracted when its engines exhaust.
     *   View detailed breakdown per stage: Mass, Thrust, ISP, TWR, and Delta-V.
 *   **🛠️ Configurable Targets**
@@ -87,8 +88,8 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     *   In Editor: Enter the expected launch latitude manually (range -90° to 90°). Invalid values will be flagged.
     *   In Flight: Automatically reads the vessel's current latitude; displayed in degrees-minutes-seconds (DMS) with N/S.
 4.  **Loss Settings:**
-    *   **Normal / Optimistic:** Choose one; both use the built-in ascent simulation. Normal is default; Optimistic assumes a more optimized ascent profile.
-    *   **Advanced Settings:** Expandable anytime. Set turn speed, Cd coefficient (drag coefficient, range 0.3–2.0), turn altitude, and gravity/atmosphere/attitude overrides; **Advanced parameters override Normal/Optimistic**.
+    *   **Pessimistic / Normal / Optimistic:** Choose one; all use the built-in ascent simulation. Normal is default; Optimistic assumes a more optimized ascent; Pessimistic gives conservative, higher-loss estimates.
+    *   **Advanced Settings:** Expandable anytime. Set turn speed, Cd coefficient (drag coefficient, range 0.3–2.0), turn altitude, and gravity/atmosphere/attitude overrides; **Advanced parameters override Pessimistic/Normal/Optimistic**.
     *   **Attitude loss reference:** Excellent trajectory 10–30 m/s, average 30–80 m/s, aggressive turn 100–300 m/s.
 5.  **Calculate:** Click the **Calculate** button.
 
@@ -125,10 +126,11 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 2.  **Vessel Analysis:** The mod scans your vessel (active or editor) to build a staging list, calculating mass, thrust, and ISP for each stage.
 3.  **Ascent Simulation:** It simulates a gravity turn ascent:
     *   Vertical climb until a specific velocity/altitude.
-    *   Gravity turn pitching over based on a power-law curve (exponent 0.50 in Optimistic, 0.58/0.70 in Normal).
-    *   Drag: Cd coefficient is user-configurable or heuristic (0.7–1.0 × √mass); same in both Editor and Flight.
+    *   Gravity turn pitching over based on a power-law curve (exponent 0.40/0.45 in Optimistic, 0.58/0.70 in Normal, 0.65/0.80 in Pessimistic).
+    *   Drag: Cd coefficient is user-configurable or heuristic (0.50/1.0/1.5 × √mass per mode); same in both Editor and Flight.
     *   Thrust and ISP vary dynamically with atmospheric pressure.
 4.  **Binary Search:** It runs the simulation multiple times, adjusting the ***simulated payload mass*** until the Available Delta-V matches the Required Delta-V, finding the limit of your rocket's capacity.
+5.  **Manual Overrides:** Use the **Engine Classification** popup to override engine roles per part and persist them for the current vessel.
 
 ## ⚠️ Notes
 
