@@ -7,6 +7,8 @@ namespace OrbitalPayloadCalculator.UI
     {
         public GUIStyle WindowStyle { get; private set; }
         public GUIStyle LabelStyle { get; private set; }
+        /// <summary>Label style with vertical centering for use in horizontal rows (e.g. engine classification).</summary>
+        public GUIStyle LabelStyleRow { get; private set; }
         public GUIStyle HeaderStyle { get; private set; }
         public GUIStyle SmallLabelStyle { get; private set; }
         public GUIStyle SmallBoldLabelStyle { get; private set; }
@@ -44,6 +46,7 @@ namespace OrbitalPayloadCalculator.UI
             var skin = HighLogic.Skin ?? GUI.skin;
             WindowStyle = new GUIStyle(skin.window) { fontSize = fontSize + 2 };
             LabelStyle = new GUIStyle(skin.label) { fontSize = fontSize };
+            LabelStyleRow = new GUIStyle(skin.label) { fontSize = fontSize, alignment = TextAnchor.MiddleLeft };
             HeaderStyle = new GUIStyle(skin.label)
             {
                 fontSize = fontSize + 1,
@@ -111,6 +114,7 @@ namespace OrbitalPayloadCalculator.UI
         {
             WindowStyle = null;
             LabelStyle = null;
+            LabelStyleRow = null;
             HeaderStyle = null;
             CenteredHeaderStyle = null;
             SmallLabelStyle = null;

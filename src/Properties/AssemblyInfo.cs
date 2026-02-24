@@ -15,8 +15,8 @@ using System.Runtime.InteropServices;
 
 [assembly: Guid("55ab96cd-3577-4530-9e33-c867c3b9905e")]
 
-[assembly: AssemblyVersion("1.2.0")]
-[assembly: AssemblyFileVersion("1.2.0")]
+[assembly: AssemblyVersion("2.0.0")]
+[assembly: AssemblyFileVersion("2.0.0")]
 
 
 [assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]

@@ -48,8 +48,6 @@ namespace OrbitalPayloadCalculator.UI
         private string _manualGravityLossInput = "";
         private string _manualAtmoLossInput = "";
         private string _manualAttitudeLossInput = "";
-        private string _turnExponentBottomInput = "";
-        private string _turnExponentFullInput = "";
         private string _turnStartSpeedInput = "";
         private string _cdaCoefficientInput = "";
         private string _turnStartAltInput = "";
@@ -410,6 +408,14 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.EndVertical();
 
             GUILayout.Space(6);
+            var cargoBayAsFairing = GUILayout.Toggle(_settings.TreatCargoBayAsFairing, Loc("#LOC_OPC_TreatCargoBayAsFairing"), _styleManager.ToggleStyle ?? GUI.skin.toggle, GUILayout.ExpandWidth(true));
+            if (cargoBayAsFairing != _settings.TreatCargoBayAsFairing)
+            {
+                _settings.SetTreatCargoBayAsFairing(cargoBayAsFairing);
+                Compute();
+            }
+            GUILayout.Label(Loc("#LOC_OPC_TreatCargoBayAsFairingHint"), _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
+            GUILayout.Space(2);
             GUILayout.Label(Loc("#LOC_OPC_SeparatorEngineHint"), _styleManager.LabelStyle);
             if (GUILayout.Button(Loc("#LOC_OPC_Calculate"), _styleManager.ButtonStyle, GUILayout.Height(32)))
                 Compute();
@@ -601,10 +607,6 @@ namespace OrbitalPayloadCalculator.UI
 
             GUILayout.BeginVertical(_styleManager.SectionStyle);
 
-            DrawAdvancedInputRow(Loc("#LOC_OPC_TurnExponentBottom"), ref _turnExponentBottomInput, "", fs, rowHeight);
-            GUILayout.Space(rowSpacing);
-            DrawAdvancedInputRow(Loc("#LOC_OPC_TurnExponentFull"), ref _turnExponentFullInput, "", fs, rowHeight);
-            GUILayout.Space(rowSpacing);
             DrawAdvancedInputRow(Loc("#LOC_OPC_TurnStartSpeed"), ref _turnStartSpeedInput, "m/s", fs, rowHeight);
             GUILayout.Space(rowSpacing);
             DrawAdvancedInputRow(Loc("#LOC_OPC_TurnStartAlt"), ref _turnStartAltInput, "m", fs, rowHeight);
@@ -644,16 +646,12 @@ namespace OrbitalPayloadCalculator.UI
         private void ResetAdvancedLossSettings()
         {
             _showAdvancedLoss = false;
-            _turnExponentBottomInput = "";
-            _turnExponentFullInput = "";
             _turnStartSpeedInput = "";
             _cdaCoefficientInput = "";
             _turnStartAltInput = "";
             _manualGravityLossInput = "";
             _manualAtmoLossInput = "";
             _manualAttitudeLossInput = "";
-            _lossConfig.TurnExponentBottom = -1.0d;
-            _lossConfig.TurnExponentFull = -1.0d;
             _lossConfig.TurnStartSpeed = -1.0d;
             _lossConfig.CdACoefficient = -1.0d;
             _lossConfig.TurnStartAltitude = -1.0d;
@@ -677,9 +675,7 @@ namespace OrbitalPayloadCalculator.UI
 
             GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpPriority"), _styleManager.SmallBoldLabelStyle ?? smallStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentBottom"), smallStyle);
-            DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentFull"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentDerived"), smallStyle);
             DrawHelpSeparator();
             GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnSpeed"), smallStyle);
             DrawHelpSeparator();
@@ -752,35 +748,18 @@ namespace OrbitalPayloadCalculator.UI
                 GUILayout.Space(4);
                 GUILayout.BeginVertical(_styleManager.SectionStyle);
                 GUILayout.Label(Loc("#LOC_OPC_ParamsUsedHeader"), _styleManager.HeaderStyle);
-                var srcMode = _lastResult.Losses.UsedEstimateMode == LossEstimateMode.Optimistic ? Loc("#LOC_OPC_ParamSourceOptimistic")
-                    : _lastResult.Losses.UsedEstimateMode == LossEstimateMode.Pessimistic ? Loc("#LOC_OPC_ParamSourcePessimistic")
-                    : Loc("#LOC_OPC_ParamSourceNormal");
                 if (_lastResult.Losses.UsedTurnExponentBottom >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentBottom")}: {FormatNum(_lastResult.Losses.UsedTurnExponentBottom)} ({(_lastResult.Losses.UsedTurnExponentBottomManual ? Loc("#LOC_OPC_ParamSourceManual") : srcMode)})", _styleManager.LabelStyle);
+                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentBottom")}: {FormatNum(_lastResult.Losses.UsedTurnExponentBottom)}", _styleManager.LabelStyle);
                 if (_lastResult.Losses.UsedTurnExponentFull >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentFull")}: {FormatNum(_lastResult.Losses.UsedTurnExponentFull)} ({(_lastResult.Losses.UsedTurnExponentFullManual ? Loc("#LOC_OPC_ParamSourceManual") : srcMode)})", _styleManager.LabelStyle);
-                var srcTurn = _lastResult.Losses.UsedTurnStartSpeedManual
-                    ? Loc("#LOC_OPC_ParamSourceManual")
-                    : srcMode;
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartSpeed")}: {_lastResult.Losses.UsedTurnStartSpeed:F0} m/s ({srcTurn})", _styleManager.LabelStyle);
-                string srcAlt;
-                if (_lastResult.Losses.UsedTurnStartAltitudeManual)
-                    srcAlt = Loc("#LOC_OPC_ParamSourceManual");
-                else if (_lastResult.Losses.UsedTurnStartAltitudeDerivedFromSpeed)
-                    srcAlt = Loc("#LOC_OPC_ParamSourceDerivedFromSpeed");
-                else
-                    srcAlt = srcMode;
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartAlt")}: {_lastResult.Losses.UsedTurnStartAltitude:F0} m ({srcAlt})", _styleManager.LabelStyle);
-                string srcCda;
-                if (_lastResult.Losses.UsedCdAFromFlight)
-                    srcCda = Loc("#LOC_OPC_ParamSourceFromParts");
-                else if (_lastResult.Losses.UsedCdAManual)
-                    srcCda = Loc("#LOC_OPC_ParamSourceManual");
-                else
-                    srcCda = srcMode;
+                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentFull")}: {FormatNum(_lastResult.Losses.UsedTurnExponentFull)}", _styleManager.LabelStyle);
+                var srcTurn = _lastResult.Losses.UsedTurnStartSpeedManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
+                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartSpeed")}: {_lastResult.Losses.UsedTurnStartSpeed:F0} m/s{srcTurn}", _styleManager.LabelStyle);
+                var srcAlt = _lastResult.Losses.UsedTurnStartAltitudeManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
+                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartAlt")}: {_lastResult.Losses.UsedTurnStartAltitude:F0} m{srcAlt}", _styleManager.LabelStyle);
+                var srcCda = _lastResult.Losses.UsedCdAManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
                 if (_lastResult.Losses.UsedCdACoefficient >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_CdACoeffLabel")}: {FormatNum(_lastResult.Losses.UsedCdACoefficient)} ({srcCda})", _styleManager.LabelStyle);
-                GUILayout.Label($"  {Loc("#LOC_OPC_CdAAreaLabel")}: {FormatNum(_lastResult.Losses.UsedCdA)} m² ({srcCda})", _styleManager.LabelStyle);
+                    GUILayout.Label($"  {Loc("#LOC_OPC_CdACoeffLabel")}: {FormatNum(_lastResult.Losses.UsedCdACoefficient)}{srcCda}", _styleManager.LabelStyle);
+                GUILayout.Label($"  {Loc("#LOC_OPC_CdAAreaLabel")}: {FormatNum(_lastResult.Losses.UsedCdA)} m²{srcCda}", _styleManager.LabelStyle);
                 GUILayout.EndVertical();
             }
 
@@ -788,7 +767,9 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Label($"{Loc("#LOC_OPC_EstimatedPayload")}: {FormatNum(_lastResult.EstimatedPayloadTons)} t", _styleManager.HeaderStyle);
 
             GUILayout.Space(6);
-            if (GUILayout.Button(Loc("#LOC_OPC_ShowDvDetails"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            var btnStyle = _styleManager.ButtonStyle;
+            var btnHeight = 28f;
+            if (GUILayout.Button(Loc("#LOC_OPC_ShowDvDetails"), btnStyle, GUILayout.Height(btnHeight)))
             {
                 _showDvDetailsPopup = !_showDvDetailsPopup;
                 if (_showDvDetailsPopup)
@@ -798,9 +779,10 @@ namespace OrbitalPayloadCalculator.UI
                     _dvDetailsPopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
                 }
             }
+            GUILayout.Space(4);
             if (_lastResult.ActiveStages != null && _lastResult.ActiveStages.Count > 0)
             {
-                if (GUILayout.Button(Loc("#LOC_OPC_ShowStageDetails"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                if (GUILayout.Button(Loc("#LOC_OPC_ShowStageDetails"), btnStyle, GUILayout.Height(btnHeight)))
                 {
                     _showStagePopup = !_showStagePopup;
                     if (_showStagePopup)
@@ -809,7 +791,8 @@ namespace OrbitalPayloadCalculator.UI
                         _stagePopupRect = new Rect(Screen.width * 0.5f, Screen.height * 0.5f, 10, 10);
                     }
                 }
-                if (GUILayout.Button(Loc("#LOC_OPC_EngineClassification"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                GUILayout.Space(4);
+                if (GUILayout.Button(Loc("#LOC_OPC_EngineClassification"), btnStyle, GUILayout.Height(btnHeight)))
                 {
                     _showEngineRolePopup = !_showEngineRolePopup;
                     _showEngineRoleSelectPopup = false;
@@ -974,11 +957,12 @@ namespace OrbitalPayloadCalculator.UI
                     var engine = stage.Engines[i];
                     if (engine == null) continue;
                     var partName = string.IsNullOrEmpty(engine.PartDisplayName) ? $"#{engine.PartInstanceId}" : TruncateForDisplay(engine.PartDisplayName);
-                    GUILayout.BeginHorizontal(_styleManager.SectionStyle);
-                    GUILayout.Label(partName, _styleManager.LabelStyle, GUILayout.MinWidth(160), GUILayout.ExpandWidth(true));
-                    GUILayout.Label($"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(engine.Role)}", _styleManager.LabelStyle, GUILayout.Width(200));
+                    const float rowHeight = 28f;
+                    GUILayout.BeginHorizontal(_styleManager.SectionStyle, GUILayout.Height(rowHeight));
+                    GUILayout.Label(partName, _styleManager.LabelStyleRow, GUILayout.MinWidth(160), GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
+                    GUILayout.Label($"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(engine.Role)}", _styleManager.LabelStyleRow, GUILayout.Width(200), GUILayout.Height(rowHeight));
 
-                    if (GUILayout.Button(Loc("#LOC_OPC_CycleRole"), _styleManager.ButtonStyle, GUILayout.Width(100)))
+                    if (GUILayout.Button(Loc("#LOC_OPC_CycleRole"), _styleManager.ButtonStyle, GUILayout.Width(100), GUILayout.Height(rowHeight)))
                     {
                         _engineRoleSelectPartId = engine.PartInstanceId;
                         _engineRoleSelectPartName = partName;
@@ -988,7 +972,7 @@ namespace OrbitalPayloadCalculator.UI
                         _engineRoleSelectPopupRect = new Rect((Screen.width - rw) * 0.5f, (Screen.height - rh) * 0.5f, rw, rh);
                     }
 
-                    if (GUILayout.Button(Loc("#LOC_OPC_AutoRole"), _styleManager.ButtonStyle, GUILayout.Width(80)))
+                    if (GUILayout.Button(Loc("#LOC_OPC_AutoRole"), _styleManager.ButtonStyle, GUILayout.Width(80), GUILayout.Height(rowHeight)))
                     {
                         _vesselService.ClearEngineRoleOverride(_lastStats.VesselPersistentKey, engine.PartInstanceId);
                         Compute();
@@ -1163,10 +1147,6 @@ namespace OrbitalPayloadCalculator.UI
             _targets.TargetInclinationDegrees = inclination;
             _targets.LaunchLatitudeDegrees = latitude;
 
-            _lossConfig.TurnExponentBottom = TryParse(_turnExponentBottomInput, out var turnExpBottom) && turnExpBottom > 0d
-                ? turnExpBottom : -1.0d;
-            _lossConfig.TurnExponentFull = TryParse(_turnExponentFullInput, out var turnExpFull) && turnExpFull > 0d
-                ? turnExpFull : -1.0d;
             _lossConfig.TurnStartSpeed = TryParse(_turnStartSpeedInput, out var turnSpeed) && turnSpeed > 0d
                 ? turnSpeed : -1.0d;
             _lossConfig.CdACoefficient = TryParse(_cdaCoefficientInput, out var cdaCoeff) && cdaCoeff > 0d
@@ -1199,6 +1179,7 @@ namespace OrbitalPayloadCalculator.UI
             _lastBodyName = _targets.LaunchBody != null
                 ? _targets.LaunchBody.displayName.LocalizeBodyName()
                 : Loc("#LOC_OPC_None");
+            _vesselService.TreatCargoBayAsFairing = _settings.TreatCargoBayAsFairing;
             _lastStats = _vesselService.ReadCurrentStats();
             _lastResult = PayloadCalculator.Compute(_lastStats, _targets, _lossConfig);
         }

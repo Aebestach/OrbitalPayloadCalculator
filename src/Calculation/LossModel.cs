@@ -18,8 +18,6 @@ namespace OrbitalPayloadCalculator.Calculation
         public bool OverrideAtmosphericLoss;
         public bool OverrideAttitudeLoss;
 
-        public double TurnExponentBottom = -1.0d;
-        public double TurnExponentFull = -1.0d;
         public double TurnStartSpeed = -1.0d;
         public double CdACoefficient = -1.0d;
         public double TurnStartAltitude = -1.0d;
@@ -66,10 +64,21 @@ namespace OrbitalPayloadCalculator.Calculation
             mode == LossEstimateMode.Optimistic ? 0.50d : (mode == LossEstimateMode.Pessimistic ? 1.5d : 1.0d);
         private static double GetBaseTurnForMode(LossEstimateMode mode) =>
             mode == LossEstimateMode.Optimistic ? 55.0d : (mode == LossEstimateMode.Pessimistic ? 95.0d : 80.0d);
-        private static double GetTurnExponentFullForMode(LossEstimateMode mode) =>
-            mode == LossEstimateMode.Optimistic ? 0.45d : (mode == LossEstimateMode.Pessimistic ? 0.80d : 0.70d);
-        internal static double GetTurnExponentBottomForMode(LossEstimateMode mode) =>
-            mode == LossEstimateMode.Optimistic ? 0.40d : (mode == LossEstimateMode.Pessimistic ? 0.65d : 0.58d);
+        /// <summary>Derives bottom-stage turn exponent from turn start speed. Linear fit: 55→0.40, 80→0.58, 95→0.65.</summary>
+        internal static double GetTurnExponentBottomFromSpeed(double turnStartSpeed)
+        {
+            if (turnStartSpeed <= 0d) return 0.58d;
+            double exp = 0.05625d + 0.00625d * Math.Min(220d, Math.Max(40d, turnStartSpeed));
+            return Math.Max(0.30d, Math.Min(0.90d, exp));
+        }
+
+        /// <summary>Derives full-segment turn exponent from turn start speed. Linear fit: 55→0.45, 80→0.70, 95→0.80.</summary>
+        private static double GetTurnExponentFullFromSpeed(double turnStartSpeed)
+        {
+            if (turnStartSpeed <= 0d) return 0.70d;
+            double exp = -0.03125d + 0.00875d * Math.Min(220d, Math.Max(40d, turnStartSpeed));
+            return Math.Max(0.30d, Math.Min(0.90d, exp));
+        }
 
         public static LossEstimate Estimate(CelestialBody body, OrbitTargets target,
             LossModelConfig config, VesselStats stats, double extraPayloadTons = 0.0d)
@@ -86,7 +95,7 @@ namespace OrbitalPayloadCalculator.Calculation
                     SimulateAscent(body, stats, target.PeriapsisAltitudeMeters,
                         target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
                         estimate, config.EstimateMode, config.TurnStartSpeed,
-                        config.CdACoefficient, config.TurnStartAltitude, config.TurnExponentFull, extraPayloadTons);
+                        config.CdACoefficient, config.TurnStartAltitude, extraPayloadTons);
                 else
                     FallbackEstimate(body, target.TargetInclinationDegrees,
                         target.LaunchLatitudeDegrees, estimate, config.EstimateMode);
@@ -121,7 +130,7 @@ namespace OrbitalPayloadCalculator.Calculation
             double targetAltM, double inclinationDeg, double launchLatDeg,
             LossEstimate result, LossEstimateMode mode, double userTurnStartSpeed,
             double userCdACoefficient, double userTurnStartAltitude,
-            double userTurnExponentFull, double extraPayloadTons = 0.0d)
+            double extraPayloadTons = 0.0d)
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
@@ -166,9 +175,9 @@ namespace OrbitalPayloadCalculator.Calculation
             result.UsedTurnStartAltitudeDerivedFromSpeed = userTurnStartAltitude <= 0d && userTurnStartSpeed > 0d;
             double turnEndAlt = Math.Max(turnStartAlt + 1000.0d, targetAltM);
 
-            double turnExponentFull = userTurnExponentFull > 0d ? userTurnExponentFull : GetTurnExponentFullForMode(mode);
+            double turnExponentFull = GetTurnExponentFullFromSpeed(turnStartSpeed);
             result.UsedTurnExponentFull = turnExponentFull;
-            result.UsedTurnExponentFullManual = userTurnExponentFull > 0d;
+            result.UsedTurnExponentFullManual = false;
 
             double altitude = 0d;
             double velocity = 0.1d;

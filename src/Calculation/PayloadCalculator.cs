@@ -116,6 +116,9 @@ namespace OrbitalPayloadCalculator.Calculation
         public List<EngineEntry> Engines = new List<EngineEntry>();
         public Dictionary<string, double> PropellantMassByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary> Fairing mass jettisoned at this stage ignition (excluded from burn mass). </summary>
+        public double FairingMassTons;
+
         /// <summary> When engines in a group exhaust, we drop GroupDryMassTons from the stack. </summary>
         public List<SeparationGroup> SeparationGroups = new List<SeparationGroup>();
     }
@@ -208,6 +211,17 @@ namespace OrbitalPayloadCalculator.Calculation
             return role == EngineRole.Main || role == EngineRole.Solid || role == EngineRole.Electric;
         }
 
+        private static bool EngineUsesPropellant(IList<string> propellantNames, string poolName)
+        {
+            if (propellantNames == null || string.IsNullOrEmpty(poolName)) return false;
+            foreach (var p in propellantNames)
+            {
+                if (string.Equals(p, poolName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
         private static bool StageHasDvEngines(StageInfo stage)
         {
             if (stage?.Engines == null) return false;
@@ -217,6 +231,14 @@ namespace OrbitalPayloadCalculator.Calculation
                     return true;
             }
             return false;
+        }
+
+        /// <summary> Mass remaining after stage fires (propellant burned, fairing jettisoned). </summary>
+        private static double StageResidualMass(StageInfo stage)
+        {
+            if (stage == null) return 0d;
+            var fairing = stage.FairingMassTons;
+            return Math.Max(0.001d, stage.WetMassTons - stage.PropellantMassTons - fairing);
         }
 
         public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig)
@@ -305,7 +327,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
             var mode = lossConfig.EstimateMode;
             double userCdA = lossConfig.CdACoefficient > 0d ? lossConfig.CdACoefficient : LossModel.GetCdForMode(mode);
-            double userTurnExpBottom = lossConfig.TurnExponentBottom > 0d ? lossConfig.TurnExponentBottom : LossModel.GetTurnExponentBottomForMode(mode);
+            double userTurnExpBottom = LossModel.GetTurnExponentBottomFromSpeed(turnStartSpeed);
             if (stats.Stages.Count > 0)
             {
                 totalDv = ComputeStagedDv(stats, body, -1, activeStages, out maxPropStageNum, turnStartSpeed, turnStartAltitude, userCdA, userTurnExpBottom);
@@ -338,7 +360,7 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             losses.UsedTurnExponentBottom = userTurnExpBottom;
-            losses.UsedTurnExponentBottomManual = lossConfig.TurnExponentBottom > 0d;
+            losses.UsedTurnExponentBottomManual = false;
 
             result.Success = true;
             result.RequiredDv = requiredDv;
@@ -396,7 +418,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
                 if (!StageHasDvEngines(stage) || stage.PropellantMassTons <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
@@ -405,7 +427,7 @@ namespace OrbitalPayloadCalculator.Calculation
                     (stage.WetMassTons + cumulativeMassAbove) - stage.PropellantMassTons, isBottomStage, out var effectiveIsp, turnStartSpeed, turnStartAltitude, userCdA, userTurnExponentBottom);
                 if (stageDv <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
@@ -414,7 +436,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
                 if (stageDry <= 0.0d || stageWet <= stageDry)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
@@ -434,7 +456,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 totalDv += stageDv;
                 outActiveStages.Add(stage);
 
-                cumulativeMassAbove += stage.WetMassTons;
+                cumulativeMassAbove += StageResidualMass(stage);
             }
 
             return totalDv;
@@ -465,14 +487,14 @@ namespace OrbitalPayloadCalculator.Calculation
 
                 if (!StageHasDvEngines(stage) || stage.PropellantMassTons <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
                 var isp = ResolveDisplayIsp(stage, body, useSeaLevelIsp);
                 if (isp <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
@@ -490,14 +512,21 @@ namespace OrbitalPayloadCalculator.Calculation
                     stageDry -= droppedDry;
                 }
 
+                // Fairing jettisoned at stage ignition: exclude from burn mass
+                if (stage.FairingMassTons > 0d)
+                {
+                    stageWet = Math.Max(0.001d, stageWet - stage.FairingMassTons);
+                    stageDry = Math.Max(0.001d, stageDry - stage.FairingMassTons);
+                }
+
                 if (stageDry <= 0.0d || stageWet <= stageDry)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
                 totalDv += isp * G0 * Math.Log(stageWet / stageDry);
-                cumulativeMassAbove += stage.WetMassTons;
+                cumulativeMassAbove += StageResidualMass(stage);
             }
 
             return totalDv;
@@ -526,7 +555,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
                 if (!StageHasDvEngines(stage) || stage.PropellantMassTons <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
@@ -536,18 +565,18 @@ namespace OrbitalPayloadCalculator.Calculation
                 var stageDv = ComputeStageDvWithDynamicBottomAscent(stats, body, stage, stageWet, stageDry, isBottomStage, out _, turnStartSpeed, turnStartAltitude, userCdA, userTurnExponentBottom);
                 if (stageDv <= 0.0d)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
                 if (stageDry <= 0.0d || stageWet <= stageDry)
                 {
-                    cumulativeMassAbove += stage.WetMassTons;
+                    cumulativeMassAbove += StageResidualMass(stage);
                     continue;
                 }
 
                 totalDv += stageDv;
-                cumulativeMassAbove += stage.WetMassTons;
+                cumulativeMassAbove += StageResidualMass(stage);
             }
 
             return totalDv;
@@ -656,6 +685,12 @@ namespace OrbitalPayloadCalculator.Calculation
             double stageWetTons, double stageDryTons, bool isBottomStage, out double effectiveIsp, double turnStartSpeed = -1.0d, double turnStartAltitude = -1.0d, double userCdA = 0.6d, double userTurnExponentBottom = 0.58d)
         {
             effectiveIsp = 0.0d;
+            var fairingMass = stage?.FairingMassTons ?? 0d;
+            if (fairingMass > 0d)
+            {
+                stageWetTons = Math.Max(0.001d, stageWetTons - fairingMass);
+                stageDryTons = Math.Max(0.001d, stageDryTons - fairingMass);
+            }
             if (stage == null || stageWetTons <= stageDryTons || stageDryTons <= 0.0d)
                 return 0.0d;
 
@@ -720,7 +755,9 @@ namespace OrbitalPayloadCalculator.Calculation
             var massKg = stageWetTons * 1000.0d;
             var dryMassKg = stageDryTons * 1000.0d;
             if (massKg <= dryMassKg || stage.ThrustkN <= 0.0d)
+            {
                 return 0.0d;
+            }
 
             var turnStartSpeed = userTurnStartSpeed > 0d ? userTurnStartSpeed : 70.0d;
             var turnStartAlt = userTurnStartAltitude > 0d ? userTurnStartAltitude : Math.Max(600.0d, Math.Min(18000.0d, body.atmosphereDepth * 0.012d));
@@ -756,6 +793,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 double totalSolidProp = 0d;
                 double totalLiquidPropKg = (stageWetTons - stageDryTons) * 1000d;
 
+                int participatingCount = 0;
                 for (int i = 0; i < engines.Count; i++)
                 {
                     var e = engines[i];
@@ -765,6 +803,7 @@ namespace OrbitalPayloadCalculator.Calculation
                         runtimes[i].Exhausted = true;
                         continue;
                     }
+                    participatingCount++;
                     totalThrustVacN += e.ThrustkN * 1000d;
 
                     if (e.Role == EngineRole.Solid && e.PropellantMassTons > 0d)
@@ -817,9 +856,9 @@ namespace OrbitalPayloadCalculator.Calculation
                             var rt = runtimes[i];
                             if (rt.Exhausted) continue;
                             if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
-                            if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !rt.Entry.PropellantNames.Contains(poolName)))
+                        if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
                                 continue;
-                            totalCompatThrust += rt.Entry.ThrustkN;
+                        totalCompatThrust += rt.Entry.ThrustkN;
                         }
 
                         if (totalCompatThrust <= 1e-9d) continue;
@@ -829,7 +868,7 @@ namespace OrbitalPayloadCalculator.Calculation
                             var rt = runtimes[i];
                             if (rt.Exhausted) continue;
                             if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
-                            if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !rt.Entry.PropellantNames.Contains(poolName)))
+                            if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
                                 continue;
                             var share = rt.Entry.ThrustkN / totalCompatThrust;
                             var add = remaining * share;
@@ -854,7 +893,9 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             if (totalThrustVacN <= 0d && fallbackVacIsp <= 0d)
+            {
                 return 0d;
+            }
 
             var altitude = 0.0d;
             var velocity = 0.1d;
@@ -916,7 +957,10 @@ namespace OrbitalPayloadCalculator.Calculation
                     combinedMassFlowKgS = combinedThrustN / (isp * G0);
                 }
 
-                if (combinedThrustN <= 0d || combinedMassFlowKgS <= 0d) break;
+                if (combinedThrustN <= 0d || combinedMassFlowKgS <= 0d)
+                {
+                    break;
+                }
 
                 var step = Math.Min(dt, (massKg - dryMassKg) / combinedMassFlowKgS);
                 if (step <= 0d) break;

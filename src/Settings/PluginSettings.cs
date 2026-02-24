@@ -13,6 +13,7 @@ namespace OrbitalPayloadCalculator.Settings
         private const bool DefaultHotkeyAlt = true;
         private const bool DefaultHotkeyCtrl = false;
         private const bool DefaultHotkeyShift = false;
+        private const bool DefaultTreatCargoBayAsFairing = false;
         private const string ConfigFileName = "config.xml";
         private const string ConfigRootName = "OrbitalPayloadCalculator";
         private const string FontSizeElementName = "FontSize";
@@ -20,6 +21,7 @@ namespace OrbitalPayloadCalculator.Settings
         private const string HotkeyAltElementName = "HotkeyAlt";
         private const string HotkeyCtrlElementName = "HotkeyCtrl";
         private const string HotkeyShiftElementName = "HotkeyShift";
+        private const string TreatCargoBayAsFairingElementName = "TreatCargoBayAsFairing";
 
         private static readonly string ConfigDirectory =
             Path.Combine(KSPUtil.ApplicationRootPath, "GameData", "OrbitalPayloadCalculator", "PluginData");
@@ -30,14 +32,16 @@ namespace OrbitalPayloadCalculator.Settings
         public bool HotkeyAlt { get; private set; }
         public bool HotkeyCtrl { get; private set; }
         public bool HotkeyShift { get; private set; }
+        public bool TreatCargoBayAsFairing { get; private set; }
 
-        private PluginSettings(int fontSize, KeyCode hotkeyKey, bool hotkeyAlt, bool hotkeyCtrl, bool hotkeyShift)
+        private PluginSettings(int fontSize, KeyCode hotkeyKey, bool hotkeyAlt, bool hotkeyCtrl, bool hotkeyShift, bool treatCargoBayAsFairing)
         {
             FontSize = Mathf.Clamp(fontSize, 13, 20);
             HotkeyKey = hotkeyKey;
             HotkeyAlt = hotkeyAlt;
             HotkeyCtrl = hotkeyCtrl;
             HotkeyShift = hotkeyShift;
+            TreatCargoBayAsFairing = treatCargoBayAsFairing;
         }
 
         public static PluginSettings LoadOrDefault()
@@ -47,6 +51,7 @@ namespace OrbitalPayloadCalculator.Settings
             var savedHotkeyAlt = DefaultHotkeyAlt;
             var savedHotkeyCtrl = DefaultHotkeyCtrl;
             var savedHotkeyShift = DefaultHotkeyShift;
+            var savedTreatCargoBayAsFairing = DefaultTreatCargoBayAsFairing;
             try
             {
                 if (File.Exists(ConfigPath))
@@ -81,6 +86,12 @@ namespace OrbitalPayloadCalculator.Settings
                     {
                         savedHotkeyShift = parsedShift;
                     }
+
+                    var cargoMatch = Regex.Match(text, $"<{TreatCargoBayAsFairingElementName}>(.*?)</{TreatCargoBayAsFairingElementName}>", RegexOptions.Singleline);
+                    if (cargoMatch.Success && bool.TryParse(cargoMatch.Groups[1].Value, out var parsedCargo))
+                    {
+                        savedTreatCargoBayAsFairing = parsedCargo;
+                    }
                 }
             }
             catch
@@ -90,9 +101,10 @@ namespace OrbitalPayloadCalculator.Settings
                 savedHotkeyAlt = DefaultHotkeyAlt;
                 savedHotkeyCtrl = DefaultHotkeyCtrl;
                 savedHotkeyShift = DefaultHotkeyShift;
+                savedTreatCargoBayAsFairing = DefaultTreatCargoBayAsFairing;
             }
 
-            return new PluginSettings(savedFontSize, savedHotkeyKey, savedHotkeyAlt, savedHotkeyCtrl, savedHotkeyShift);
+            return new PluginSettings(savedFontSize, savedHotkeyKey, savedHotkeyAlt, savedHotkeyCtrl, savedHotkeyShift, savedTreatCargoBayAsFairing);
         }
 
         public void SetFontSize(int fontSize)
@@ -110,6 +122,12 @@ namespace OrbitalPayloadCalculator.Settings
             Save();
         }
 
+        public void SetTreatCargoBayAsFairing(bool value)
+        {
+            TreatCargoBayAsFairing = value;
+            Save();
+        }
+
         private void Save()
         {
             try
@@ -122,6 +140,7 @@ namespace OrbitalPayloadCalculator.Settings
                     $"  <{HotkeyAltElementName}>{HotkeyAlt}</{HotkeyAltElementName}>\n" +
                     $"  <{HotkeyCtrlElementName}>{HotkeyCtrl}</{HotkeyCtrlElementName}>\n" +
                     $"  <{HotkeyShiftElementName}>{HotkeyShift}</{HotkeyShiftElementName}>\n" +
+                    $"  <{TreatCargoBayAsFairingElementName}>{TreatCargoBayAsFairing}</{TreatCargoBayAsFairingElementName}>\n" +
                     $"</{ConfigRootName}>\n";
                 File.WriteAllText(ConfigPath, content);
             }
