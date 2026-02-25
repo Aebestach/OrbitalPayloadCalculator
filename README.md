@@ -54,8 +54,8 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 
 ## Compatibility
 
-1. **Celestial bodies & aerodynamics mods:** Stock bodies, RSS (Real Solar System), FAR (Ferram Aerospace Research), etc. are theoretically supported for calculation. Actual payload capacity depends on real flight trajectory; results are for reference only. Prediction accuracy is generally acceptable in most scenarios.
-2. **Launch pad mods:** This mod has minimized the impact of **AlphaMensaes Modular Launch Pads** and similar launch pad mods on calculations (though some cases may still slip through). For more accurate payload estimates, **do not** include launch clamps, launch pads, or other rocket-unrelated dead weight in your vessel when calculating.
+- **Celestial bodies & aerodynamics mods:** Stock bodies, RSS (Real Solar System), FAR (Ferram Aerospace Research), etc. are theoretically supported for calculation. Actual payload capacity depends on real flight trajectory; results are for reference only. Prediction accuracy is generally acceptable in most scenarios.
+- **Launch pad mods:** This mod has minimized the impact of **AlphaMensaes Modular Launch Pads** and similar launch pad mods on calculations (though some cases may still slip through). For more accurate payload estimates, **do not** include launch clamps, launch pads, or other rocket-unrelated dead weight in your vessel when calculating.
 
 ## Installation
 
