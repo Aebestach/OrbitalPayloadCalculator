@@ -123,39 +123,6 @@ namespace OrbitalPayloadCalculator.Calculation
         public List<SeparationGroup> SeparationGroups = new List<SeparationGroup>();
     }
 
-    /// <summary>
-    /// CdA (m²) vs flight path angle gamma (rad). Used in Flight for dynamic drag.
-    /// </summary>
-    internal sealed class CdATable
-    {
-        public double[] GammaRad { get; }
-        public double[] CdAValues { get; }
-
-        public CdATable(double[] gammaRad, double[] cdAValues)
-        {
-            GammaRad = gammaRad ?? new double[0];
-            CdAValues = cdAValues ?? new double[0];
-        }
-
-        public double GetCdA(double gammaRad)
-        {
-            if (GammaRad == null || GammaRad.Length == 0) return -1.0d;
-            if (GammaRad.Length == 1) return CdAValues[0];
-            var g = Math.Max(GammaRad[0], Math.Min(GammaRad[GammaRad.Length - 1], gammaRad));
-            for (int i = 0; i < GammaRad.Length - 1; i++)
-            {
-                if (g >= GammaRad[i] && g <= GammaRad[i + 1])
-                {
-                    double t = (GammaRad[i + 1] - GammaRad[i]) > 1e-10d
-                        ? (g - GammaRad[i]) / (GammaRad[i + 1] - GammaRad[i])
-                        : 0d;
-                    return CdAValues[i] * (1.0d - t) + CdAValues[i + 1] * t;
-                }
-            }
-            return CdAValues[0];
-        }
-    }
-
     internal sealed class VesselStats
     {
         public string VesselName = string.Empty;
@@ -717,7 +684,6 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (dynamicDv > 0.0d)
                 {
                     effectiveIsp = dynamicDv / (G0 * lnMassRatio);
-                    var vacEq = stage.VacuumIsp * G0 * lnMassRatio;
                     return dynamicDv;
                 }
             }
@@ -793,7 +759,6 @@ namespace OrbitalPayloadCalculator.Calculation
                 double totalSolidProp = 0d;
                 double totalLiquidPropKg = (stageWetTons - stageDryTons) * 1000d;
 
-                int participatingCount = 0;
                 for (int i = 0; i < engines.Count; i++)
                 {
                     var e = engines[i];
@@ -803,7 +768,6 @@ namespace OrbitalPayloadCalculator.Calculation
                         runtimes[i].Exhausted = true;
                         continue;
                     }
-                    participatingCount++;
                     totalThrustVacN += e.ThrustkN * 1000d;
 
                     if (e.Role == EngineRole.Solid && e.PropellantMassTons > 0d)

@@ -247,7 +247,6 @@ namespace OrbitalPayloadCalculator.UI
             DrawRightPanel();
             GUILayout.EndHorizontal();
 
-            //GUILayout.Space(4);
             if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(30)))
             {
                 Visible = false;
@@ -828,7 +827,9 @@ namespace OrbitalPayloadCalculator.UI
                 var roleTag = stage.HasSolidFuel ? " [SRB]" : "";
                 if (stage.Engines != null && stage.Engines.Any(e => e.Role == EngineRole.Electric))
                     roleTag += " [ELEC]";
-                var uiStage = Math.Max(0, _lastStats.TotalStages - stage.StageNumber);
+                // KSP inverseStage: smaller = top (fires last), larger = bottom (fires first).
+                // Display S1=top .. SN=bottom to match physical order in the popup list.
+                var uiStage = Math.Max(1, stage.StageNumber);
                 GUILayout.Label(
                     $"  S{uiStage}{roleTag}: " +
                     $"Delta-V={FormatDv(stage.DeltaV)} m/s  " +
@@ -950,7 +951,8 @@ namespace OrbitalPayloadCalculator.UI
             foreach (var stage in _lastStats.Stages.OrderByDescending(s => s.StageNumber))
             {
                 if (stage?.Engines == null || stage.Engines.Count == 0) continue;
-                var uiStage = Math.Max(0, _lastStats.TotalStages - stage.StageNumber);
+                // KSP inverseStage: smaller = top, larger = bottom. S1=top, SN=bottom.
+                var uiStage = Math.Max(1, stage.StageNumber);
                 GUILayout.Label($"{Loc("#LOC_OPC_StageBreakdown")} S{uiStage}", _styleManager.HeaderStyle);
                 for (int i = 0; i < stage.Engines.Count; i++)
                 {
@@ -1028,22 +1030,6 @@ namespace OrbitalPayloadCalculator.UI
                 _showEngineRoleSelectPopup = false;
 
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
-        }
-
-        private static EngineRole NextEngineRole(EngineRole current)
-        {
-            var values = new[]
-            {
-                EngineRole.Main,
-                EngineRole.Solid,
-                EngineRole.Electric,
-                EngineRole.Retro,
-                EngineRole.Settling,
-                EngineRole.EscapeTower
-            };
-            var idx = Array.IndexOf(values, current);
-            if (idx < 0) return EngineRole.Main;
-            return values[(idx + 1) % values.Length];
         }
 
         private static string LocEngineRole(EngineRole role)

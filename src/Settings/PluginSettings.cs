@@ -8,7 +8,7 @@ namespace OrbitalPayloadCalculator.Settings
 {
     internal sealed class PluginSettings
     {
-        private const int DefaultFontSize = 13;
+        private const int DefaultFontSize = 20;
         private const KeyCode DefaultHotkeyKey = KeyCode.P;
         private const bool DefaultHotkeyAlt = true;
         private const bool DefaultHotkeyCtrl = false;
