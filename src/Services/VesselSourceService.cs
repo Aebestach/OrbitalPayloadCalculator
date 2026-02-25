@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using KSP.Localization;
 using OrbitalPayloadCalculator.Calculation;
 using UnityEngine;
@@ -170,6 +171,7 @@ namespace OrbitalPayloadCalculator.Services
                 if (target != null)
                 {
                     target.PropellantMassTons += si.PropellantMassTons;
+                    target.BoosterPhasePropellantTons += si.BoosterPhasePropellantTons;
                     if (si.PropellantMassByName != null)
                     {
                         foreach (var kv in si.PropellantMassByName)
@@ -180,6 +182,7 @@ namespace OrbitalPayloadCalculator.Services
                         }
                     }
                     si.PropellantMassTons = 0.0d;
+                    si.BoosterPhasePropellantTons = 0.0d;
                     si.PropellantMassByName.Clear();
                 }
             }
@@ -204,6 +207,224 @@ namespace OrbitalPayloadCalculator.Services
                 }
             }
             return max + 1;
+        }
+
+        private struct FuelLineEdge
+        {
+            public int SourcePartId;
+            public int TargetPartId;
+        }
+
+        private static readonly string[] FuelLineModuleNames = { "CModuleFuelLine", "ModuleFuelLine", "FuelLine" };
+
+        /// <summary>True if part is a fuel line (FTX-2 External Fuel Duct / CModuleFuelLine).</summary>
+        private static bool IsFuelLinePart(Part part)
+        {
+            if (part == null) return false;
+            var pname = part.partInfo?.name ?? part.name ?? "";
+            if (string.Equals(pname, "fuelLine", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (HasFuelLineModule(part))
+                return true;
+            var typeName = part.GetType().Name;
+            return string.Equals(typeName, "CompoundPart", StringComparison.OrdinalIgnoreCase)
+                   && HasFuelLineModule(part);
+        }
+
+        private static bool HasFuelLineModule(Part part)
+        {
+            if (part?.Modules == null) return false;
+            foreach (var modName in FuelLineModuleNames)
+                if (part.Modules.Contains(modName)) return true;
+            return false;
+        }
+
+        /// <summary>Gets fuel line endpoints: source (fuel flows FROM) and target (fuel flows TO).
+        /// Asparagus: source=booster tank, target=core. Parent is usually the booster (source).
+        /// CompoundPart has attachNodes=0, so we use reflection to find the other Part.</summary>
+        private static bool TryGetFuelLineEndpoints(Part fuelLinePart, out Part source, out Part target)
+        {
+            source = null;
+            target = null;
+            if (fuelLinePart == null || !IsFuelLinePart(fuelLinePart))
+                return false;
+            source = fuelLinePart.parent;
+            if (source == null)
+                return false;
+
+            Part other = null;
+            if (fuelLinePart.attachNodes != null)
+            {
+                foreach (var an in fuelLinePart.attachNodes)
+                {
+                    if (an?.attachedPart == null) continue;
+                    if (an.attachedPart == source) continue;
+                    other = an.attachedPart;
+                    break;
+                }
+            }
+            if (other == null)
+                other = GetCompoundPartOtherViaReflection(fuelLinePart, source);
+            if (other == null)
+                return false;
+            target = other;
+            return true;
+        }
+
+        /// <summary>CompoundPart has attachNodes=0; get the other-end Part via reflection.</summary>
+        private static Part GetCompoundPartOtherViaReflection(Part part, Part exclude)
+        {
+            if (part == null) return null;
+            try
+            {
+                var type = part.GetType();
+                foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (f.FieldType != typeof(Part)) continue;
+                    var val = f.GetValue(part) as Part;
+                    if (val == null || val == part || val == exclude) continue;
+                    return val;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>Builds fuel flow graph: sourcePartId -> list of targetPartIds. Only includes parts present in parts set.</summary>
+        private static Dictionary<int, List<int>> BuildFuelFlowGraph(IList<Part> parts, List<FuelLineEdge> edges)
+        {
+            var partIds = new HashSet<int>();
+            if (parts != null)
+            {
+                foreach (var p in parts)
+                {
+                    if (p != null)
+                        partIds.Add(p.GetInstanceID());
+                }
+            }
+            var graph = new Dictionary<int, List<int>>();
+            if (edges == null) return graph;
+            foreach (var e in edges)
+            {
+                if (!partIds.Contains(e.SourcePartId) || !partIds.Contains(e.TargetPartId))
+                    continue;
+                if (!graph.TryGetValue(e.SourcePartId, out var targets))
+                {
+                    targets = new List<int>();
+                    graph[e.SourcePartId] = targets;
+                }
+                if (!targets.Contains(e.TargetPartId))
+                    targets.Add(e.TargetPartId);
+            }
+            return graph;
+        }
+
+        /// <summary>For tanks that are fuel line sources, move their propellant to the target stage (where fuel flows to).</summary>
+        private static void AssignPropellantByFuelLines(
+            IList<Part> parts,
+            Dictionary<int, StageInfo> stageMap,
+            Dictionary<int, List<int>> flowGraph,
+            Dictionary<int, int> partIdToStageNum,
+            HashSet<string> dvPropNames,
+            HashSet<int> stagesWithDvEngines)
+        {
+            if (parts == null || stageMap == null || flowGraph == null || flowGraph.Count == 0)
+                return;
+            const int maxBfsDepth = 32;
+            foreach (var part in parts)
+            {
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                var sourceId = part.GetInstanceID();
+                if (!flowGraph.TryGetValue(sourceId, out var targets) || targets == null || targets.Count == 0)
+                    continue;
+                if (!stageMap.TryGetValue(part.inverseStage, out var sourceStage))
+                    continue;
+                double partPropMass = 0d;
+                var partPropByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (PartResource res in part.Resources ?? Enumerable.Empty<PartResource>())
+                {
+                    if (res?.info == null || !dvPropNames.Contains(res.resourceName))
+                        continue;
+                    var mass = res.amount * res.info.density;
+                    if (mass <= 1e-9d) continue;
+                    partPropMass += mass;
+                    partPropByName[res.resourceName] = mass;
+                }
+                if (partPropMass <= 1e-9d) continue;
+
+                int bestTargetStage = -1;
+                var visited = new HashSet<int> { sourceId };
+                var queue = new Queue<int>();
+                foreach (var t in targets)
+                    queue.Enqueue(t);
+                var depth = 0;
+                while (queue.Count > 0 && depth < maxBfsDepth)
+                {
+                    var count = queue.Count;
+                    for (var i = 0; i < count; i++)
+                    {
+                        var pid = queue.Dequeue();
+                        if (!visited.Add(pid)) continue;
+                        if (!partIdToStageNum.TryGetValue(pid, out var targetStageNum))
+                            continue;
+                        if (stagesWithDvEngines.Contains(targetStageNum))
+                        {
+                            if (bestTargetStage < 0 || targetStageNum > bestTargetStage)
+                                bestTargetStage = targetStageNum;
+                        }
+                        if (flowGraph.TryGetValue(pid, out var nextTargets))
+                        {
+                            foreach (var nt in nextTargets)
+                            {
+                                if (!visited.Contains(nt))
+                                    queue.Enqueue(nt);
+                            }
+                        }
+                    }
+                    if (bestTargetStage >= 0) break;
+                    depth++;
+                }
+                if (bestTargetStage < 0)
+                {
+                    var maxDvStage = stagesWithDvEngines.Count > 0 ? stagesWithDvEngines.Max() : -1;
+                    if (maxDvStage >= 0)
+                        bestTargetStage = maxDvStage;
+                    else
+                    {
+                        foreach (var t in targets)
+                        {
+                            if (partIdToStageNum.TryGetValue(t, out var ts))
+                            {
+                                if (bestTargetStage < 0 || ts > bestTargetStage)
+                                    bestTargetStage = ts;
+                            }
+                        }
+                    }
+                }
+                if (bestTargetStage < 0 || !stageMap.TryGetValue(bestTargetStage, out var targetStage))
+                    continue;
+
+                sourceStage.PropellantMassTons -= partPropMass;
+                foreach (var kv in partPropByName)
+                {
+                    if (sourceStage.PropellantMassByName.TryGetValue(kv.Key, out var curr))
+                    {
+                        var next = Math.Max(0d, curr - kv.Value);
+                        if (next <= 1e-9d)
+                            sourceStage.PropellantMassByName.Remove(kv.Key);
+                        else
+                            sourceStage.PropellantMassByName[kv.Key] = next;
+                    }
+                }
+                targetStage.PropellantMassTons += partPropMass;
+                targetStage.BoosterPhasePropellantTons += partPropMass;
+                foreach (var kv in partPropByName)
+                {
+                    if (!targetStage.PropellantMassByName.ContainsKey(kv.Key))
+                        targetStage.PropellantMassByName[kv.Key] = 0d;
+                    targetStage.PropellantMassByName[kv.Key] += kv.Value;
+                }
+            }
         }
 
         private sealed class EngineBuildRecord
@@ -286,6 +507,33 @@ namespace OrbitalPayloadCalculator.Services
 
             ClassifyEngines(engineRecords);
 
+            var partIdToStageNum = new Dictionary<int, int>();
+            foreach (var part in parts)
+            {
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                partIdToStageNum[part.GetInstanceID()] = part.inverseStage;
+            }
+
+            var fuelLineEdges = new List<FuelLineEdge>();
+            foreach (var part in parts)
+            {
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                if (IsFuelLinePart(part) && TryGetFuelLineEndpoints(part, out var src, out var tgt) && src != null && tgt != null)
+                {
+                    fuelLineEdges.Add(new FuelLineEdge
+                    {
+                        SourcePartId = src.GetInstanceID(),
+                        TargetPartId = tgt.GetInstanceID()
+                    });
+                }
+            }
+            var stagesWithDvEngines = new HashSet<int>();
+            foreach (var record in engineRecords)
+            {
+                if (!PayloadCalculator.IsDvParticipatingRole(record.Role)) continue;
+                stagesWithDvEngines.Add(record.StageNumber);
+            }
+
             var dvPropNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var record in engineRecords)
             {
@@ -347,6 +595,9 @@ namespace OrbitalPayloadCalculator.Services
                 }
             }
 
+            var flowGraph = BuildFuelFlowGraph(parts, fuelLineEdges);
+            AssignPropellantByFuelLines(parts, stageMap, flowGraph, partIdToStageNum, dvPropNames, stagesWithDvEngines);
+
             foreach (var si in stageMap.Values)
             {
                 si.HasEngines = si.Engines.Count > 0;
@@ -392,7 +643,10 @@ namespace OrbitalPayloadCalculator.Services
             stats.Stages = stageList;
 
             var liquidDvPropNames = new HashSet<string>(dvPropNames.Where(n => !string.Equals(n, "SolidFuel", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase);
-            BuildSeparationGroups(parts, stageMap, liquidDvPropNames);
+            var fuelLineSourcePartIds = new HashSet<int>();
+            foreach (var e in fuelLineEdges)
+                fuelLineSourcePartIds.Add(e.SourcePartId);
+            BuildSeparationGroups(parts, stageMap, liquidDvPropNames, fuelLineSourcePartIds);
 
             foreach (var si in stageList)
             {
@@ -644,17 +898,19 @@ namespace OrbitalPayloadCalculator.Services
             }
         }
 
+        /// <summary>
+        /// Samples engine atmosphereCurve from 0 (vacuum) to 10 atm (Eve-level) for all-body support.
+        /// </summary>
         private static void SampleAtmosphereCurve(ModuleEngines engine, EngineEntry entry)
         {
             if (engine.atmosphereCurve == null) return;
-            const int n = 11;
-            entry.PressureSamples = new double[n];
-            entry.IspSamples = new double[n];
-            for (int i = 0; i < n; i++)
+            var pressures = new[] { 0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0 };
+            entry.PressureSamples = new double[pressures.Length];
+            entry.IspSamples = new double[pressures.Length];
+            for (int i = 0; i < pressures.Length; i++)
             {
-                double p = i / (double)(n - 1);
-                entry.PressureSamples[i] = p;
-                entry.IspSamples[i] = (double)engine.atmosphereCurve.Evaluate((float)p);
+                entry.PressureSamples[i] = pressures[i];
+                entry.IspSamples[i] = (double)engine.atmosphereCurve.Evaluate((float)pressures[i]);
             }
         }
 
@@ -722,8 +978,10 @@ namespace OrbitalPayloadCalculator.Services
         /// subtract that mass from the stack. Multi-pair boosters (SRBs/liquid) separate at different
         /// stages (e.g. stage 5, 4, 3); we must detect all of them, not just nextStage.
         /// Uses multiple detection paths: part.children, AttachNode.attachedPart (excluding parent), and parent-inverse.
+        /// When a separation group contains any fuel line source (part feeding core via duct), the booster is
+        /// empty at separation—all its fuel was drained to the core. Set GroupLiquidPropellantTons = 0 for such groups.
         /// </summary>
-        private static void BuildSeparationGroups(IList<Part> parts, Dictionary<int, StageInfo> stageMap, HashSet<string> liquidPropNames)
+        private static void BuildSeparationGroups(IList<Part> parts, Dictionary<int, StageInfo> stageMap, HashSet<string> liquidPropNames, HashSet<int> fuelLineSourcePartIds = null)
         {
             if (parts == null || parts.Count == 0 || stageMap == null) return;
 
@@ -792,16 +1050,24 @@ namespace OrbitalPayloadCalculator.Services
                 ? new HashSet<string>(liquidPropNames.Where(n => !string.Equals(n, "SolidFuel", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase)
                 : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            var excludeLiquidFromSources = fuelLineSourcePartIds ?? new HashSet<int>();
+
+            var allReleasedPartIds = new HashSet<int>();
+            var partDryMassById = new Dictionary<int, double>();
+
             foreach (var releasedIds in releasedByDecoupler)
             {
                 double groupDryMass = 0d;
                 double groupLiquidPropTons = 0d;
+                var fuelLineSrcCountInGroup = 0;
                 foreach (var p in parts)
                 {
                     if (p == null || !releasedIds.Contains(p.GetInstanceID())) continue;
                     if (IsExcludedFromCalculation(p)) continue;
                     double partTotalMass = (double)p.mass;
                     double partResourceMass = 0d;
+                    var isFuelLineSource = excludeLiquidFromSources.Contains(p.GetInstanceID());
+                    if (isFuelLineSource) fuelLineSrcCountInGroup++;
                     if (p.Resources != null)
                     {
                         foreach (PartResource res in p.Resources)
@@ -809,7 +1075,7 @@ namespace OrbitalPayloadCalculator.Services
                             if (res?.info == null) continue;
                             double m = res.amount * res.info.density;
                             partResourceMass += m;
-                            if (liquidNames.Count > 0 && liquidNames.Contains(res.resourceName))
+                            if (liquidNames.Count > 0 && liquidNames.Contains(res.resourceName) && !isFuelLineSource)
                                 groupLiquidPropTons += m;
                         }
                     }
@@ -820,11 +1086,15 @@ namespace OrbitalPayloadCalculator.Services
                 }
                 if (groupDryMass <= 0d) continue;
 
+                if (fuelLineSrcCountInGroup > 0)
+                    groupLiquidPropTons = 0d;
+
                 var group = new SeparationGroup
                 {
                     GroupDryMassTons = groupDryMass,
                     GroupLiquidPropellantTons = groupLiquidPropTons,
-                    EngineIndices = new HashSet<int>()
+                    EngineIndices = new HashSet<int>(),
+                    ReleasedPartIds = new HashSet<int>(releasedIds)
                 };
                 for (int i = 0; i < bottomStage.Engines.Count; i++)
                 {
@@ -835,7 +1105,56 @@ namespace OrbitalPayloadCalculator.Services
                     }
                 }
                 if (group.EngineIndices.Count > 0)
+                {
                     bottomStage.SeparationGroups.Add(group);
+                    foreach (var p in parts)
+                    {
+                        if (p == null || !releasedIds.Contains(p.GetInstanceID())) continue;
+                        if (IsExcludedFromCalculation(p)) continue;
+                        var pid = p.GetInstanceID();
+                        allReleasedPartIds.Add(pid);
+                        double partResourceMass = 0d;
+                        if (p.Resources != null)
+                        {
+                            foreach (PartResource res in p.Resources)
+                            {
+                                if (res?.info == null) continue;
+                                partResourceMass += res.amount * res.info.density;
+                            }
+                        }
+                        var partDry = (double)p.mass - partResourceMass;
+                        if (partDry < 0.001d) partDry = (double)p.mass;
+                        partDryMassById[pid] = Math.Max(0.001d, partDry);
+                    }
+                }
+            }
+
+            if (allReleasedPartIds.Count > 0)
+            {
+                double uniqueDropped = 0d;
+                bottomStage.PartDryMassTonsById = new Dictionary<int, double>();
+                foreach (var pid in allReleasedPartIds)
+                {
+                    if (partDryMassById.TryGetValue(pid, out var dm))
+                    {
+                        var tons = dm;
+                        uniqueDropped += tons;
+                        bottomStage.PartDryMassTonsById[pid] = tons;
+                    }
+                }
+                bottomStage.UniqueDroppedDryMassTons = uniqueDropped;
+            }
+
+            if (bottomStage.BoosterPhasePropellantTons > 0d)
+            {
+                bottomStage.BoosterEngineIndices = new HashSet<int>();
+                foreach (var grp in bottomStage.SeparationGroups)
+                {
+                    if (grp == null || grp.EngineIndices == null) continue;
+                    if (grp.EngineIndices.Count == 1 && grp.GroupDryMassTons < 15d)
+                        foreach (var idx in grp.EngineIndices)
+                            bottomStage.BoosterEngineIndices.Add(idx);
+                }
             }
         }
 

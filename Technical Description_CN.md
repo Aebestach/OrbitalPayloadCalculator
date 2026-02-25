@@ -23,7 +23,7 @@
 | **仿真中重力损失** | 时间步进 $`g = \mu/R^2`$ | `gravParameter`、`Radius` |
 | **仿真中大气密度** | $`\rho = p/(R_{\mathrm{air}} \cdot T)`$ | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
-| **分离组（助推器干质量）** | 扫描 `maxPropStageNum-1` 至 0 所有阶段的分离器；发动机燃尽时抛离 | 部件层级、`inverseStage`、`ModuleDecouple` |
+| **底级海平面 TWR** | 推力按所选天体海平面气压下的 Isp 计算；重力取 `body.GeeASL` | `atmospherePressureSeaLevel`、`GeeASL`、`engine.atmosphereCurve` |
 
 ### 地表理想 Delta-V 模型详情
 
@@ -51,7 +51,7 @@
 | **重力损失**（无仿真时） | `FallbackEstimate` 经验公式 | 无推力/Isp 数据时使用的替代公式 |
 | **大气损失**（无仿真时） | $`A_{\mathrm{atmo}} + B_{\mathrm{atmo}}`$ 经验公式 | 基于 $`g_N`$ 、 $`p_N`$ 、 $`d_N`$ 归一化缩放因子的拟合公式 |
 | **姿态损失** | $`(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})`$ ， $`f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert`$ 。 $`A`$ 、 $`B`$ 由模式及 $`g_N`$ 、 $`d_N`$ 、 $`p_N`$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
-| **Turn Start Speed** | $`v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})`$ ， $`v_{\mathrm{base}}`$ 按模式取 55/80/95 m/s | 基于重力、大气归一化得出的启转速度 |
+| **Turn Start Speed** | $`v_{\mathrm{auto}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})`$ ；当底级 TWR ∈ [1.05, 3.0] 且用户未覆盖时， $`v_{\mathrm{turn}} = v_{\mathrm{auto}} \times \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}`$ ；否则 $`v_{\mathrm{turn}} = v_{\mathrm{auto}}`$ ； $`v_{\mathrm{base}}`$ 按模式取 55/80/95 m/s， $`\mathrm{TWR}_{\mathrm{ref}}`$ 按模式取 1.4/1.5/1.6 | 基于重力、大气、底级推重比的启转速度 |
 | **Turn Start Altitude** | $`h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)`$ | 启转高度估计 |
 | **转弯指数（重力转弯）** | 由启转速度线性拟合得出，典型值：底级 0.40/0.58/0.65，全段 0.45/0.70/0.80 | 经验值；控制俯仰转向速率 |
 
@@ -65,11 +65,11 @@
 
 ## 1.3 估算模式参数
 
-| 模式 | Cd | 启转速度基准 | 底级转弯指数 | 全段转弯指数 |
-|------|----|-------------|--------------|--------------|
-| 乐观 | 0.50 | 55 m/s | 0.40 | 0.45 |
-| 普通 | 1.0 | 80 m/s | 0.58 | 0.70 |
-| 悲观 | 1.5 | 95 m/s | 0.65 | 0.80 |
+| 模式 | Cd | 启转速度基准 | TWR 参考 | 底级转弯指数 | 全段转弯指数 |
+|------|----|-------------|----------|--------------|--------------|
+| 乐观 | 0.50 | 55 m/s | 1.4 | 0.40 | 0.45 |
+| 普通 | 1.0 | 80 m/s | 1.5 | 0.58 | 0.70 |
+| 悲观 | 1.5 | 95 m/s | 1.6 | 0.65 | 0.80 |
 
 ## 1.4 参数优先级
 
@@ -77,8 +77,8 @@
 
 ## 1.5 简要总结
 
-- **可算的量**：地表理想 Delta-V（模型 A/B）、轨道速度、平面变轨、自转、阶段 Delta-V、重力场、大气压强/温度/密度、大气混合 Isp。这些都由天体数据驱动，随天体不同自动变化。
-- **估计的量**：Cd 系数与 CdA、重力/大气/姿态损失（尤其是 Fallback 和姿态项）、启转速度和高度、转弯指数。这些依赖启发式或经验规则。
+- **可算的量**：地表理想 Delta-V（模型 A/B）、轨道速度、平面变轨、自转、阶段 Delta-V、重力场、大气压强/温度/密度、大气混合 Isp、底级海平面 TWR。这些都由天体数据驱动，随天体不同自动变化。
+- **估计的量**：Cd 系数与 CdA、重力/大气/姿态损失（尤其是 Fallback 和姿态项）、启转速度和高度、转弯指数。启转速度在无用户覆盖时由模式基准 + 天体缩放 + 底级 TWR 共同决定；TWR 在 1.05～3.0 范围内时， $`v_{\mathrm{turn}} \propto \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}`$ ， $`\mathrm{TWR}_{\mathrm{ref}}`$ 按模式取 1.4/1.5/1.6。
 - **编辑器和飞行模式**：CdA 使用相同启发式，不基于部件几何计算。
 
 ---
@@ -391,3 +391,32 @@ Retro、Settling、EscapeTower 三类：
 | Andromeda AeroSpace Agency (AASA) 发射台 | partName 含 `launch.pad`（如 `aasa.ag.launch.pad`） |
 
 排除后，这些部件的质量、燃料、引擎均不会被计入统计数据。
+
+## 3.10 燃料导管（FTX-2 External Fuel Duct）建模
+
+Kerbal X 等载具使用燃料导管将捆绑助推器的燃料导向主堆芯，主推优先消耗助推器燃料后再分离空助推器。若不建模燃料导管，燃料归属可能错误，导致 Delta-V 与分离质量计算偏差。
+
+### 识别与解析
+
+- **部件识别**：`part.partInfo.name == "fuelLine"`，或 `part.Modules` 含 `CModuleFuelLine` / `ModuleFuelLine` / `FuelLine`，或 `part` 为 `CompoundPart` 且含上述模块
+- **流向**：`part.parent` = Source（燃料由此流出），另一端 = Target（燃料流入）。KSP CompoundPart 的 `attachNodes` 常为空，需通过反射获取另一端的 Part 引用
+- **数据结构**：`FuelLineEdge { SourcePartId, TargetPartId }`
+
+### 燃料分配
+
+1. 构建燃料流图 `flowGraph: sourcePartId -> [targetPartIds]`
+2. 对每个作为燃料管源的储箱，沿图 BFS 找到可达的、有 Delta-V 引擎的阶段，取其 stageNumber 最大者作为目标阶段
+3. 将该储箱的推进剂从原阶段移除，加入目标阶段；同时累加 `BoosterPhasePropellantTons`（助推器阶段推进剂量）
+4. `AssignPropellantByFuelLines` 在常规燃料累加之后、`RedistributePropellant` 之前执行
+5. `RedistributePropellant` 迁移燃料时同步迁移 `BoosterPhasePropellantTons`
+
+### 分离组调整
+
+- 燃料管源储箱的燃料已归属到主推所在阶段，分离时助推器已空。故 `GroupLiquidPropellantTons` 不包含这些储箱的液推质量，避免重复扣除；分离组内若有任一根燃料导管源，则该组 `GroupLiquidPropellantTons = 0`
+- **重叠去重**：径向分离组与轴向分离组的释放集合可能重叠（如 6 个助推器被 2 个轴向分离器的 released 集合包含）。用 `UniqueDroppedDryMassTons` 对释放部件 ID 去重后只计一次干质量；仿真中通过 `ReleasedPartIds` 与 `droppedPartIds` 避免重复扣除
+
+### 分阶段燃料分配（芦笋式仿真）
+
+- **BoosterPhasePropellantTons**：从燃料导管源转移的推进剂总量，按实际储箱 `amount × density` 累加，**随载具动态计算**（Kerbal X 约 12 t 仅为示例）
+- **BoosterEngineIndices**：径向助推器分离组中的发动机索引；判定条件：单发动机且干质量 < 15 t（启发式阈值，用于区分径向助推器与轴向级）
+- **仿真分配**：先将 `BoosterPhasePropellantTons` 按推力比例分配给所有液推；剩余推进剂仅分配给芯级发动机。助推器发动机在烧完其份额后熄火并抛离，与真实芦笋式时序一致

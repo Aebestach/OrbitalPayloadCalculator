@@ -63,6 +63,8 @@ namespace OrbitalPayloadCalculator.Calculation
             mode == LossEstimateMode.Optimistic ? 0.50d : (mode == LossEstimateMode.Pessimistic ? 1.5d : 1.0d);
         private static double GetBaseTurnForMode(LossEstimateMode mode) =>
             mode == LossEstimateMode.Optimistic ? 55.0d : (mode == LossEstimateMode.Pessimistic ? 95.0d : 80.0d);
+        private static double GetTwrRefForMode(LossEstimateMode mode) =>
+            mode == LossEstimateMode.Optimistic ? 1.4d : (mode == LossEstimateMode.Pessimistic ? 1.6d : 1.5d);
         /// <summary>Derives bottom-stage turn exponent from turn start speed. Linear fit: 55→0.40, 80→0.58, 95→0.65.</summary>
         internal static double GetTurnExponentBottomFromSpeed(double turnStartSpeed)
         {
@@ -142,6 +144,13 @@ namespace OrbitalPayloadCalculator.Calculation
                 : Clamp(autoTurn, 40.0d, 220.0d);
             if (double.IsNaN(turnStartSpeed) || double.IsInfinity(turnStartSpeed))
                 turnStartSpeed = baseTurn;
+            if (userTurnStartSpeed <= 0.0d && stats != null)
+            {
+                var twr = PayloadCalculator.GetBottomStageSeaLevelTWR(stats, body);
+                var twrRef = GetTwrRefForMode(mode);
+                if (twr >= 1.05d && twr <= 3.0d)
+                    turnStartSpeed = Clamp(turnStartSpeed * Math.Sqrt(twrRef / twr), 40.0d, 220.0d);
+            }
             result.UsedTurnStartSpeed = turnStartSpeed;
             result.UsedTurnStartSpeedManual = userTurnStartSpeed > 0.0d;
 
@@ -207,9 +216,8 @@ namespace OrbitalPayloadCalculator.Calculation
                         density = pKPa * 1000.0d / (AirRSpecific * tempK);
                 }
 
-                double isp = vacIsp + (seaIsp - vacIsp) *
-                             Math.Max(0d, Math.Min(1d, pressureAtm));
-                if (isp <= 0d) isp = vacIsp;
+                var pClamp = Math.Max(0d, Math.Min(15d, pressureAtm));
+                double isp = Math.Max(1d, vacIsp + (seaIsp - vacIsp) * pClamp);
 
                 double thrust = thrustVacN * (isp / vacIsp);
 
@@ -318,7 +326,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
         /// <summary>Resolves turn start speed and altitude for use by ascent simulations. Returns the same values that SimulateAscent would use.</summary>
         public static void ResolveTurnParams(CelestialBody body, LossEstimateMode mode, double userTurnStartSpeed,
-            double userTurnStartAltitude, out double turnStartSpeed, out double turnStartAltitude)
+            double userTurnStartAltitude, out double turnStartSpeed, out double turnStartAltitude, VesselStats stats = null)
         {
             if (body == null)
             {
@@ -335,6 +343,14 @@ namespace OrbitalPayloadCalculator.Calculation
                 : Clamp(autoTurn, 40.0d, 220.0d);
             if (double.IsNaN(turnStartSpeed) || double.IsInfinity(turnStartSpeed))
                 turnStartSpeed = baseTurn;
+
+            if (userTurnStartSpeed <= 0.0d && stats != null)
+            {
+                var twr = PayloadCalculator.GetBottomStageSeaLevelTWR(stats, body);
+                var twrRef = GetTwrRefForMode(mode);
+                if (twr >= 1.05d && twr <= 3.0d)
+                    turnStartSpeed = Clamp(turnStartSpeed * Math.Sqrt(twrRef / twr), 40.0d, 220.0d);
+            }
 
             bool hasAtmo = body.atmosphere && body.atmosphereDepth > 0d;
             double atmoHeight = hasAtmo ? body.atmosphereDepth : 0d;
