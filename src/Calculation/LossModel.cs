@@ -1,11 +1,18 @@
 using System;
-using UnityEngine;
 
 namespace OrbitalPayloadCalculator.Calculation
 {
+    /// <summary>Loss estimate mode: Optimistic (best case), Normal (typical), Pessimistic (worst case).</summary>
+    internal enum LossEstimateMode
+    {
+        Optimistic = 0,
+        Normal = 1,
+        Pessimistic = 2
+    }
+
     internal sealed class LossModelConfig
     {
-        public bool AggressiveEstimate;
+        public LossEstimateMode EstimateMode = LossEstimateMode.Normal;
         public bool OverrideGravityLoss;
         public bool OverrideAtmosphericLoss;
         public bool OverrideAttitudeLoss;
@@ -26,11 +33,17 @@ namespace OrbitalPayloadCalculator.Calculation
         public double TotalDv;
 
         /// <summary>Values actually used in simulation; -1 if N/A (e.g. fallback).</summary>
+        public double UsedTurnExponentBottom = -1.0d;
+        public double UsedTurnExponentFull = -1.0d;
         public double UsedTurnStartSpeed = -1.0d;
         public double UsedCdA = -1.0d;
         public double UsedCdACoefficient = -1.0d;
         public double UsedTurnStartAltitude = -1.0d;
+        public bool UsedTurnExponentBottomManual;
+        public bool UsedTurnExponentFullManual;
         public bool UsedTurnStartSpeedManual;
+        /// <summary>Mode used for this computation; used for source display.</summary>
+        public LossEstimateMode UsedEstimateMode;
         public bool UsedCdAManual;
         public bool UsedCdAFromFlight;
         public bool UsedTurnStartAltitudeManual;
@@ -46,10 +59,30 @@ namespace OrbitalPayloadCalculator.Calculation
         private const double KerbinAtmoDepthMeters = 70000.0d;
         private const double KerbinRadiusMeters = 600000.0d;
 
+        internal static double GetCdForMode(LossEstimateMode mode) =>
+            mode == LossEstimateMode.Optimistic ? 0.50d : (mode == LossEstimateMode.Pessimistic ? 1.5d : 1.0d);
+        private static double GetBaseTurnForMode(LossEstimateMode mode) =>
+            mode == LossEstimateMode.Optimistic ? 55.0d : (mode == LossEstimateMode.Pessimistic ? 95.0d : 80.0d);
+        /// <summary>Derives bottom-stage turn exponent from turn start speed. Linear fit: 55→0.40, 80→0.58, 95→0.65.</summary>
+        internal static double GetTurnExponentBottomFromSpeed(double turnStartSpeed)
+        {
+            if (turnStartSpeed <= 0d) return 0.58d;
+            double exp = 0.05625d + 0.00625d * Math.Min(220d, Math.Max(40d, turnStartSpeed));
+            return Math.Max(0.30d, Math.Min(0.90d, exp));
+        }
+
+        /// <summary>Derives full-segment turn exponent from turn start speed. Linear fit: 55→0.45, 80→0.70, 95→0.80.</summary>
+        private static double GetTurnExponentFullFromSpeed(double turnStartSpeed)
+        {
+            if (turnStartSpeed <= 0d) return 0.70d;
+            double exp = -0.03125d + 0.00875d * Math.Min(220d, Math.Max(40d, turnStartSpeed));
+            return Math.Max(0.30d, Math.Min(0.90d, exp));
+        }
+
         public static LossEstimate Estimate(CelestialBody body, OrbitTargets target,
             LossModelConfig config, VesselStats stats, double extraPayloadTons = 0.0d)
         {
-            var estimate = new LossEstimate();
+            var estimate = new LossEstimate { UsedEstimateMode = config.EstimateMode };
 
             if (body != null)
             {
@@ -60,11 +93,11 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (canSim)
                     SimulateAscent(body, stats, target.PeriapsisAltitudeMeters,
                         target.TargetInclinationDegrees, target.LaunchLatitudeDegrees,
-                        estimate, config.AggressiveEstimate, config.TurnStartSpeed,
+                        estimate, config.EstimateMode, config.TurnStartSpeed,
                         config.CdACoefficient, config.TurnStartAltitude, extraPayloadTons);
                 else
                     FallbackEstimate(body, target.TargetInclinationDegrees,
-                        target.LaunchLatitudeDegrees, estimate, config.AggressiveEstimate);
+                        target.LaunchLatitudeDegrees, estimate, config.EstimateMode);
             }
 
             if (config.OverrideGravityLoss)
@@ -94,14 +127,14 @@ namespace OrbitalPayloadCalculator.Calculation
         /// </summary>
         private static void SimulateAscent(CelestialBody body, VesselStats stats,
             double targetAltM, double inclinationDeg, double launchLatDeg,
-            LossEstimate result, bool aggressive, double userTurnStartSpeed,
+            LossEstimate result, LossEstimateMode mode, double userTurnStartSpeed,
             double userCdACoefficient, double userTurnStartAltitude,
             double extraPayloadTons = 0.0d)
         {
             const double dt = 1.0d;
             const double maxTime = 900.0d;
             GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
-            var baseTurn = aggressive ? 60.0d : 80.0d;
+            var baseTurn = GetBaseTurnForMode(mode);
             var autoTurn = baseTurn * Math.Pow(gN, 0.25d) *
                            (0.92d + 0.18d * Math.Log(1.0d + pN) + 0.12d * Math.Pow(dN, 0.3d));
             double turnStartSpeed = userTurnStartSpeed > 0.0d
@@ -119,7 +152,7 @@ namespace OrbitalPayloadCalculator.Calculation
             double seaIsp = stats.SeaLevelIspSeconds > 0d ? stats.SeaLevelIspSeconds : vacIsp;
 
             double totalWetTons = stats.WetMassTons + extraPayloadTons;
-            double coeff = userCdACoefficient > 0d ? userCdACoefficient : (aggressive ? 0.7d : 1.0d);
+            double coeff = userCdACoefficient > 0d ? userCdACoefficient : GetCdForMode(mode);
             double CdAFixed = coeff * Math.Pow(totalWetTons, 0.5d);
             result.UsedCdA = CdAFixed;
             result.UsedCdACoefficient = coeff;
@@ -140,6 +173,10 @@ namespace OrbitalPayloadCalculator.Calculation
             result.UsedTurnStartAltitudeManual = userTurnStartAltitude > 0d;
             result.UsedTurnStartAltitudeDerivedFromSpeed = userTurnStartAltitude <= 0d && userTurnStartSpeed > 0d;
             double turnEndAlt = Math.Max(turnStartAlt + 1000.0d, targetAltM);
+
+            double turnExponentFull = GetTurnExponentFullFromSpeed(turnStartSpeed);
+            result.UsedTurnExponentFull = turnExponentFull;
+            result.UsedTurnExponentFullManual = false;
 
             double altitude = 0d;
             double velocity = 0.1d;
@@ -188,7 +225,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 }
 
                 double CdA = CdAFixed;
-                if (CdA <= 0d) CdA = (aggressive ? 0.7d : 1.0d) * Math.Pow(totalWetTons, 0.5d);
+                if (CdA <= 0d) CdA = GetCdForMode(mode) * Math.Pow(totalWetTons, 0.5d);
                 double drag = 0.5d * density * velocity * velocity * CdA * machMult;
                 double sinG = Math.Sin(gamma);
 
@@ -210,8 +247,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 {
                     double progress = Math.Max(0d, Math.Min(1d,
                         (altitude - turnStartAlt) / (turnEndAlt - turnStartAlt)));
-                    double turnExponent = aggressive ? 0.50d : 0.7d;
-                    gamma = (Math.PI / 2.0d) * (1.0d - Math.Pow(progress, turnExponent));
+                    gamma = (Math.PI / 2.0d) * (1.0d - Math.Pow(progress, turnExponentFull));
                     if (gamma < 0.02d) gamma = 0.02d;
                 }
 
@@ -227,8 +263,8 @@ namespace OrbitalPayloadCalculator.Calculation
             double incFactor = rawIncFactor * latScale;
             if (body != null && body.atmosphere)
             {
-                double baseA0 = aggressive ? 15.0d : 20.0d;
-                double baseB0 = aggressive ? 15.0d : 20.0d;
+                double baseA0 = mode == LossEstimateMode.Optimistic ? 13.0d : (mode == LossEstimateMode.Pessimistic ? 25.0d : 20.0d);
+                double baseB0 = mode == LossEstimateMode.Optimistic ? 13.0d : (mode == LossEstimateMode.Pessimistic ? 25.0d : 20.0d);
                 double baseA = baseA0 * (0.90d + 0.15d * Math.Pow(gN, 0.3d) + 0.10d * Math.Pow(dN, 0.25d));
                 double baseB = baseB0 * (0.90d + 0.10d * Math.Log(1.0d + pN) + 0.10d * Math.Pow(gN, 0.25d));
                 double baseLoss = baseA + baseB * Math.Sqrt(Math.Max(0.01d, pN)) * gN;
@@ -236,8 +272,8 @@ namespace OrbitalPayloadCalculator.Calculation
             }
             else if (body != null)
             {
-                double vacA0 = aggressive ? 2.0d : 3.0d;
-                double vacB0 = aggressive ? 3.5d : 5.0d;
+                double vacA0 = mode == LossEstimateMode.Optimistic ? 1.8d : (mode == LossEstimateMode.Pessimistic ? 4.0d : 3.0d);
+                double vacB0 = mode == LossEstimateMode.Optimistic ? 3.0d : (mode == LossEstimateMode.Pessimistic ? 6.0d : 5.0d);
                 double vacA = vacA0 * (0.90d + 0.20d * Math.Pow(gN, 0.3d));
                 double vacB = vacB0 * (0.90d + 0.15d * Math.Pow(gN, 0.25d) + 0.10d * Math.Pow(rN, 0.2d));
                 result.AttitudeLossDv = (vacA + vacB * gN) * (1.0d + incFactor);
@@ -249,11 +285,11 @@ namespace OrbitalPayloadCalculator.Calculation
         /// Uses simple empirical formulas.
         /// </summary>
         private static void FallbackEstimate(CelestialBody body, double inclinationDeg,
-            double launchLatDeg, LossEstimate result, bool aggressive)
+            double launchLatDeg, LossEstimate result, LossEstimateMode mode)
         {
             GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
-            double gravCoeff0 = aggressive ? 750.0d : 900.0d;
-            double gravMin0 = aggressive ? 300.0d : 400.0d;
+            double gravCoeff0 = mode == LossEstimateMode.Optimistic ? 700.0d : (mode == LossEstimateMode.Pessimistic ? 1050.0d : 900.0d);
+            double gravMin0 = mode == LossEstimateMode.Optimistic ? 280.0d : (mode == LossEstimateMode.Pessimistic ? 500.0d : 400.0d);
             double gravCoeff = gravCoeff0 * Math.Pow(rN, 0.30d) * Math.Pow(gN, 0.30d);
             double gravMin = gravMin0 * Math.Pow(rN, 0.25d) * Math.Pow(gN, 0.20d);
             double gravMax = 2200.0d * Math.Pow(rN, 0.30d);
@@ -262,8 +298,8 @@ namespace OrbitalPayloadCalculator.Calculation
             result.AtmosphericLossDv = 0.0d;
             if (body.atmosphere)
             {
-                double atmoA0 = aggressive ? 60.0d : 80.0d;
-                double atmoB0 = aggressive ? 80.0d : 100.0d;
+                double atmoA0 = mode == LossEstimateMode.Optimistic ? 55.0d : (mode == LossEstimateMode.Pessimistic ? 100.0d : 80.0d);
+                double atmoB0 = mode == LossEstimateMode.Optimistic ? 75.0d : (mode == LossEstimateMode.Pessimistic ? 120.0d : 100.0d);
                 double atmoA = atmoA0 * Math.Pow(Math.Max(0.05d, dN), 0.30d);
                 double atmoB = atmoB0 * Math.Pow(Math.Max(0.01d, pN), 0.60d) * Math.Pow(Math.Max(0.05d, dN), 0.20d);
                 double atmoMax = 800.0d * Math.Pow(rN, 0.30d) * Math.Pow(Math.Max(1.0d, pN), 0.20d);
@@ -273,15 +309,15 @@ namespace OrbitalPayloadCalculator.Calculation
             double latScale = Math.Abs(Math.Cos(launchLatDeg * Math.PI / 180.0d));
             double incPrefix = 0.2d * (0.95d + 0.08d * Math.Min(1.5d, Math.Log(1.0d + rN)));
             double incFactor = incPrefix * Math.Min(1.0d, inclinationDeg / 90.0d) * latScale;
-            double attA0 = aggressive ? 25.0d : 35.0d;
-            double attB0 = aggressive ? 40.0d : 55.0d;
+            double attA0 = mode == LossEstimateMode.Optimistic ? 22.0d : (mode == LossEstimateMode.Pessimistic ? 45.0d : 35.0d);
+            double attB0 = mode == LossEstimateMode.Optimistic ? 36.0d : (mode == LossEstimateMode.Pessimistic ? 70.0d : 55.0d);
             double attA = attA0 * (0.90d + 0.20d * Math.Pow(gN, 0.30d) + 0.10d * Math.Pow(rN, 0.20d));
             double attB = attB0 * (0.90d + 0.20d * Math.Pow(gN, 0.25d));
             result.AttitudeLossDv = attA + attB * incFactor;
         }
 
         /// <summary>Resolves turn start speed and altitude for use by ascent simulations. Returns the same values that SimulateAscent would use.</summary>
-        public static void ResolveTurnParams(CelestialBody body, bool aggressive, double userTurnStartSpeed,
+        public static void ResolveTurnParams(CelestialBody body, LossEstimateMode mode, double userTurnStartSpeed,
             double userTurnStartAltitude, out double turnStartSpeed, out double turnStartAltitude)
         {
             if (body == null)
@@ -291,7 +327,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 return;
             }
             GetNormalizedBodyScales(body, out var gN, out var pN, out var dN, out var rN);
-            var baseTurn = aggressive ? 60.0d : 80.0d;
+            var baseTurn = GetBaseTurnForMode(mode);
             var autoTurn = baseTurn * Math.Pow(gN, 0.25d) *
                            (0.92d + 0.18d * Math.Log(1.0d + pN) + 0.12d * Math.Pow(dN, 0.3d));
             turnStartSpeed = userTurnStartSpeed > 0.0d

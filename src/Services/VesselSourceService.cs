@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
+using KSP.Localization;
 using OrbitalPayloadCalculator.Calculation;
 using UnityEngine;
 
@@ -8,9 +11,18 @@ namespace OrbitalPayloadCalculator.Services
 {
     internal sealed class VesselSourceService
     {
+        private const double SettlingThrustFractionOfMax = 0.01d;
+        private static readonly string EngineOverridePath =
+            Path.Combine(KSPUtil.ApplicationRootPath, "GameData", "OrbitalPayloadCalculator", "PluginData", "engine-role-overrides.cfg");
+        private static readonly Dictionary<string, Dictionary<int, EngineRole>> EngineRoleOverrides =
+            LoadEngineRoleOverrides();
+
         private readonly bool _isEditor;
         private readonly List<Vessel> _flightCandidates = new List<Vessel>();
         private int _selectedFlightIndex;
+
+        /// <summary> When true, ModuleCargoBay parts are treated as fairings (excluded at jettison). </summary>
+        public bool TreatCargoBayAsFairing { get; set; }
 
         public VesselSourceService(bool isEditor)
         {
@@ -57,6 +69,35 @@ namespace OrbitalPayloadCalculator.Services
             return _isEditor ? ReadFromEditor() : ReadFromFlightSelection();
         }
 
+        public void SetEngineRoleOverride(string vesselKey, int partInstanceId, EngineRole role)
+        {
+            if (string.IsNullOrEmpty(vesselKey)) return;
+            if (!EngineRoleOverrides.TryGetValue(vesselKey, out var map))
+            {
+                map = new Dictionary<int, EngineRole>();
+                EngineRoleOverrides[vesselKey] = map;
+            }
+            map[partInstanceId] = role;
+            SaveEngineRoleOverrides();
+        }
+
+        public void ClearEngineRoleOverride(string vesselKey, int partInstanceId)
+        {
+            if (string.IsNullOrEmpty(vesselKey)) return;
+            if (!EngineRoleOverrides.TryGetValue(vesselKey, out var map)) return;
+            if (!map.Remove(partInstanceId)) return;
+            if (map.Count == 0)
+                EngineRoleOverrides.Remove(vesselKey);
+            SaveEngineRoleOverrides();
+        }
+
+        public void ClearAllEngineRoleOverrides(string vesselKey)
+        {
+            if (string.IsNullOrEmpty(vesselKey)) return;
+            if (!EngineRoleOverrides.Remove(vesselKey)) return;
+            SaveEngineRoleOverrides();
+        }
+
         private VesselStats ReadFromFlightSelection()
         {
             GetFlightCandidates();
@@ -67,7 +108,8 @@ namespace OrbitalPayloadCalculator.Services
             if (selected == null)
                 return new VesselStats { HasVessel = false };
 
-            return BuildStatsFromParts(selected.vesselName, selected.Parts, true, GetStageCount(selected));
+            var vesselKey = $"flight:{selected.id:N}";
+            return BuildStatsFromParts(selected.vesselName, vesselKey, selected.Parts, true, GetStageCount(selected), TreatCargoBayAsFairing);
         }
 
         private VesselStats ReadFromEditor()
@@ -80,26 +122,32 @@ namespace OrbitalPayloadCalculator.Services
                 return new VesselStats { HasVessel = false };
 
             var stageCount = KSP.UI.Screens.StageManager.StageCount;
-            return BuildStatsFromParts(ship.shipName, ship.parts, false, stageCount);
+            var vesselKey = $"editor:{(ship.shipName ?? "untitled").Trim()}";
+            return BuildStatsFromParts(ship.shipName, vesselKey, ship.parts, false, stageCount, TreatCargoBayAsFairing);
         }
 
         /// <summary>
         /// Fuel tanks and engines may end up in different inverseStage groups.
         /// KSP allows crossfeed so engines can burn fuel from tanks in other stages.
-        /// Move propellant from non-engine stages to the engine stage that would consume it
-        /// (the highest-numbered engine stage that fires while the fuel is still attached).
+        /// Move propellant from stages that have no dV-participating engines (e.g. Retro/Settling only)
+        /// to the engine stage that would consume it (Main/Solid/Electric).
+        /// Source: stage has propellant but no Main/Solid/Electric engines (or no engines at all).
+        /// Target: the NEAREST dV stage that fires before we drop the source (min StageNumber among
+        /// candidates &gt;= source). Upper stage fuel (S0,S1) goes to S2; lower stage fuel (S3) goes to S4.
         /// </summary>
         private static void RedistributePropellant(Dictionary<int, StageInfo> stageMap)
         {
             foreach (var si in stageMap.Values)
             {
-                if (si.HasEngines || si.PropellantMassTons <= 0.0d)
+                if (si.PropellantMassTons <= 0.0d)
+                    continue;
+                if (StageHasDvParticipatingEngines(si))
                     continue;
 
                 StageInfo target = null;
                 foreach (var candidate in stageMap.Values)
                 {
-                    if (!candidate.HasEngines)
+                    if (!StageHasDvParticipatingEngines(candidate))
                         continue;
                     if (candidate.StageNumber < si.StageNumber)
                         continue;
@@ -111,7 +159,7 @@ namespace OrbitalPayloadCalculator.Services
                 {
                     foreach (var candidate in stageMap.Values)
                     {
-                        if (!candidate.HasEngines)
+                        if (!StageHasDvParticipatingEngines(candidate))
                             continue;
                         if (target == null ||
                             Math.Abs(candidate.StageNumber - si.StageNumber) < Math.Abs(target.StageNumber - si.StageNumber))
@@ -122,9 +170,25 @@ namespace OrbitalPayloadCalculator.Services
                 if (target != null)
                 {
                     target.PropellantMassTons += si.PropellantMassTons;
+                    if (si.PropellantMassByName != null)
+                    {
+                        foreach (var kv in si.PropellantMassByName)
+                        {
+                            if (!target.PropellantMassByName.ContainsKey(kv.Key))
+                                target.PropellantMassByName[kv.Key] = 0d;
+                            target.PropellantMassByName[kv.Key] += kv.Value;
+                        }
+                    }
                     si.PropellantMassTons = 0.0d;
+                    si.PropellantMassByName.Clear();
                 }
             }
+        }
+
+        private static bool StageHasDvParticipatingEngines(StageInfo si)
+        {
+            if (si?.Engines == null) return false;
+            return si.Engines.Any(e => PayloadCalculator.IsDvParticipatingRole(e.Role));
         }
 
         private static int GetStageCount(Vessel vessel)
@@ -142,12 +206,28 @@ namespace OrbitalPayloadCalculator.Services
             return max + 1;
         }
 
-        private static VesselStats BuildStatsFromParts(string vesselName, IList<Part> parts, bool fromFlight, int stageCount)
+        private sealed class EngineBuildRecord
+        {
+            public int StageNumber;
+            public Part Part;
+            public ModuleEngines Engine;
+            public double ThrustkN;
+            public double VacuumIsp;
+            public double SeaLevelIsp;
+            public bool SelfContainedPropellant;
+            public bool HasAbortAction;
+            public Vector3d ThrustDirection;
+            public List<string> PropellantNames = new List<string>();
+            public EngineRole Role = EngineRole.Main;
+        }
+
+        private static VesselStats BuildStatsFromParts(string vesselName, string vesselKey, IList<Part> parts, bool fromFlight, int stageCount, bool treatCargoBayAsFairing = false)
         {
             var stats = new VesselStats
             {
                 HasVessel = parts != null && parts.Count > 0,
                 VesselName = vesselName ?? string.Empty,
+                VesselPersistentKey = vesselKey ?? string.Empty,
                 FromFlight = fromFlight,
                 TotalStages = stageCount
             };
@@ -155,14 +235,14 @@ namespace OrbitalPayloadCalculator.Services
             if (!stats.HasVessel) return stats;
 
             var stageMap = new Dictionary<int, StageInfo>();
-            var globalPropNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var engineRecords = new List<EngineBuildRecord>();
 
             double totalWet = 0, totalThrust = 0, totalWeightedVac = 0, totalWeightedSea = 0;
 
             foreach (var part in parts)
             {
                 if (part == null) continue;
-                if (IsLaunchClamp(part)) continue;
+                if (IsExcludedFromCalculation(part)) continue;
 
                 var stageNum = part.inverseStage;
                 if (!stageMap.TryGetValue(stageNum, out var si))
@@ -186,76 +266,116 @@ namespace OrbitalPayloadCalculator.Services
                     var engine = module as ModuleEngines;
                     if (engine == null || engine.maxThrust <= 0.0f) continue;
 
-                    si.HasEngines = true;
-                    si.ThrustkN += engine.maxThrust;
-                    totalThrust += engine.maxThrust;
-
                     var vacIsp = (double)engine.atmosphereCurve.Evaluate(0.0f);
                     var seaIsp = (double)engine.atmosphereCurve.Evaluate(1.0f);
-                    si.VacuumIsp = si.ThrustkN > 0
-                        ? (si.VacuumIsp * (si.ThrustkN - engine.maxThrust) + vacIsp * engine.maxThrust) / si.ThrustkN
-                        : vacIsp;
-                    si.SeaLevelIsp = si.ThrustkN > 0
-                        ? (si.SeaLevelIsp * (si.ThrustkN - engine.maxThrust) + seaIsp * engine.maxThrust) / si.ThrustkN
-                        : seaIsp;
-
-                    totalWeightedVac += engine.maxThrust * vacIsp;
-                    totalWeightedSea += engine.maxThrust * seaIsp;
-
-                    bool isSolid = false;
-                    double solidPropMass = 0d;
-                    foreach (var prop in engine.propellants)
+                    engineRecords.Add(new EngineBuildRecord
                     {
-                        if (!string.IsNullOrEmpty(prop.name))
-                            globalPropNames.Add(prop.name);
-
-                        if (prop.name == "SolidFuel")
-                        {
-                            si.HasSolidFuel = true;
-                            isSolid = true;
-                            foreach (PartResource res in part.Resources)
-                            {
-                                if (res.resourceName == "SolidFuel")
-                                    solidPropMass += res.amount * res.info.density;
-                            }
-                        }
-                    }
-
-                    var entry = new EngineEntry
-                    {
+                        StageNumber = stageNum,
+                        Part = part,
+                        Engine = engine,
                         ThrustkN = engine.maxThrust,
                         VacuumIsp = vacIsp,
                         SeaLevelIsp = seaIsp,
-                        IsSolid = isSolid,
-                        PropellantMassTons = isSolid ? solidPropMass : 0d,
-                        PartDryMassTons = partDryMass,
-                        PartInstanceId = part.GetInstanceID(),
-                        SeparationGroupIndex = -1
-                    };
-
-                    SampleAtmosphereCurve(engine, entry);
-                    if (isSolid)
-                        SampleThrustCurve(engine, entry);
-
-                    si.Engines.Add(entry);
+                        SelfContainedPropellant = IsSelfContainedPropellantEngine(engine, part),
+                        HasAbortAction = HasAbortAction(engine),
+                        ThrustDirection = GetEngineThrustDirection(engine, part),
+                        PropellantNames = GetEnginePropellantNames(engine)
+                    });
                 }
+            }
+
+            ClassifyEngines(engineRecords);
+
+            var dvPropNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var record in engineRecords)
+            {
+                if (!PayloadCalculator.IsDvParticipatingRole(record.Role))
+                    continue;
+                foreach (var prop in record.PropellantNames)
+                {
+                    if (string.IsNullOrEmpty(prop))
+                        continue;
+                    dvPropNames.Add(prop);
+                }
+            }
+
+            foreach (var record in engineRecords)
+            {
+                if (!stageMap.TryGetValue(record.StageNumber, out var si))
+                    continue;
+                var role = ApplyRoleOverride(vesselKey, record.Part.GetInstanceID(), record.Role);
+                var solidPropMass = role == EngineRole.Solid
+                    ? GetPartPropellantMass(record.Part, record.PropellantNames)
+                    : 0d;
+                var partTitle = record.Part?.partInfo?.title;
+                var partDisplayName = !string.IsNullOrEmpty(partTitle)
+                    ? Localizer.Format(partTitle)
+                    : (record.Part?.partInfo?.name ?? "?");
+                var entry = new EngineEntry
+                {
+                    ThrustkN = record.ThrustkN,
+                    VacuumIsp = record.VacuumIsp,
+                    SeaLevelIsp = record.SeaLevelIsp,
+                    Role = role,
+                    PropellantMassTons = solidPropMass,
+                    PropellantNames = new List<string>(record.PropellantNames),
+                    PartDryMassTons = (double)record.Part.mass,
+                    PartInstanceId = record.Part.GetInstanceID(),
+                    PartDisplayName = partDisplayName ?? string.Empty,
+                    SeparationGroupIndex = -1
+                };
+                SampleAtmosphereCurve(record.Engine, entry);
+                if (entry.Role == EngineRole.Solid)
+                    SampleThrustCurve(record.Engine, entry);
+                si.Engines.Add(entry);
             }
 
             foreach (var part in parts)
             {
-                if (part == null) continue;
-                if (IsLaunchClamp(part)) continue;
-                var stageNum = part.inverseStage;
-                if (!stageMap.TryGetValue(stageNum, out var si)) continue;
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                if (!stageMap.TryGetValue(part.inverseStage, out var si)) continue;
 
                 foreach (PartResource res in part.Resources)
                 {
-                    if (globalPropNames.Contains(res.resourceName))
-                        si.PropellantMassTons += res.amount * res.info.density;
+                    if (!dvPropNames.Contains(res.resourceName))
+                        continue;
+                    var mass = res.amount * res.info.density;
+                    si.PropellantMassTons += mass;
+                    if (!si.PropellantMassByName.ContainsKey(res.resourceName))
+                        si.PropellantMassByName[res.resourceName] = 0d;
+                    si.PropellantMassByName[res.resourceName] += mass;
                 }
             }
 
+            foreach (var si in stageMap.Values)
+            {
+                si.HasEngines = si.Engines.Count > 0;
+            }
             RedistributePropellant(stageMap);
+            BuildFairingMasses(parts, stageMap, treatCargoBayAsFairing);
+
+            foreach (var si in stageMap.Values)
+            {
+                si.HasSolidFuel = si.Engines.Any(e => e.Role == EngineRole.Solid);
+                si.ThrustkN = 0d;
+                si.VacuumIsp = 0d;
+                si.SeaLevelIsp = 0d;
+                double stageWeightedVac = 0d;
+                double stageWeightedSea = 0d;
+                foreach (var e in si.Engines)
+                {
+                    if (!PayloadCalculator.IsDvParticipatingRole(e.Role))
+                        continue;
+                    si.ThrustkN += e.ThrustkN;
+                    stageWeightedVac += e.ThrustkN * e.VacuumIsp;
+                    stageWeightedSea += e.ThrustkN * e.SeaLevelIsp;
+                }
+                if (si.ThrustkN > 0d)
+                {
+                    si.VacuumIsp = stageWeightedVac / si.ThrustkN;
+                    si.SeaLevelIsp = stageWeightedSea / si.ThrustkN;
+                }
+            }
 
             foreach (var si in stageMap.Values)
             {
@@ -271,7 +391,15 @@ namespace OrbitalPayloadCalculator.Services
             stageList.Sort((a, b) => a.StageNumber.CompareTo(b.StageNumber));
             stats.Stages = stageList;
 
-            BuildSeparationGroups(parts, stageMap, globalPropNames);
+            var liquidDvPropNames = new HashSet<string>(dvPropNames.Where(n => !string.Equals(n, "SolidFuel", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase);
+            BuildSeparationGroups(parts, stageMap, liquidDvPropNames);
+
+            foreach (var si in stageList)
+            {
+                totalThrust += si.ThrustkN;
+                totalWeightedVac += si.ThrustkN * si.VacuumIsp;
+                totalWeightedSea += si.ThrustkN * si.SeaLevelIsp;
+            }
 
             stats.WetMassTons = totalWet;
             stats.DryMassTons = Math.Max(0.01d, totalWet - totalPropellant);
@@ -280,6 +408,240 @@ namespace OrbitalPayloadCalculator.Services
             stats.SeaLevelIspSeconds = totalThrust > 0 ? totalWeightedSea / totalThrust : 0;
 
             return stats;
+        }
+
+        private static EngineRole ApplyRoleOverride(string vesselKey, int partInstanceId, EngineRole autoRole)
+        {
+            if (string.IsNullOrEmpty(vesselKey))
+                return autoRole;
+            if (!EngineRoleOverrides.TryGetValue(vesselKey, out var map))
+                return autoRole;
+            return map.TryGetValue(partInstanceId, out var overrideRole) ? overrideRole : autoRole;
+        }
+
+        private static List<string> GetEnginePropellantNames(ModuleEngines engine)
+        {
+            var names = new List<string>();
+            if (engine?.propellants == null) return names;
+            foreach (var prop in engine.propellants)
+            {
+                if (prop == null || string.IsNullOrEmpty(prop.name)) continue;
+                if (!names.Contains(prop.name))
+                    names.Add(prop.name);
+            }
+            return names;
+        }
+
+        /// <summary>
+        /// True if the part has fuel capability for all engine propellants (PartResource exists),
+        /// not whether it currently has fuel. Empty tanks still qualify as self-contained.
+        /// </summary>
+        private static bool IsSelfContainedPropellantEngine(ModuleEngines engine, Part part)
+        {
+            if (engine?.propellants == null || part?.Resources == null) return false;
+            bool hasRelevantPropellant = false;
+            foreach (var prop in engine.propellants)
+            {
+                if (prop == null || string.IsNullOrEmpty(prop.name))
+                    continue;
+                if (string.Equals(prop.name, "ElectricCharge", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                hasRelevantPropellant = true;
+                bool found = false;
+                foreach (PartResource res in part.Resources)
+                {
+                    if (!string.Equals(res.resourceName, prop.name, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (res.maxAmount >= 1e-9d)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    return false;
+            }
+            return hasRelevantPropellant;
+        }
+
+        private static double GetPartPropellantMass(Part part, IEnumerable<string> propellantNames)
+        {
+            if (part?.Resources == null || propellantNames == null) return 0d;
+            var nameSet = new HashSet<string>(propellantNames.Where(n => !string.IsNullOrEmpty(n)), StringComparer.OrdinalIgnoreCase);
+            double mass = 0d;
+            foreach (PartResource res in part.Resources)
+            {
+                if (!nameSet.Contains(res.resourceName))
+                    continue;
+                mass += res.amount * res.info.density;
+            }
+            return mass;
+        }
+
+        private static bool HasAbortAction(ModuleEngines engine)
+        {
+            if (engine?.Actions == null) return false;
+            foreach (BaseAction action in engine.Actions)
+            {
+                if (action == null) continue;
+                if ((action.actionGroup & KSPActionGroup.Abort) != 0)
+                    return true;
+            }
+            return false;
+        }
+
+        private static Vector3d GetEngineThrustDirection(ModuleEngines engine, Part part)
+        {
+            if (engine?.thrustTransforms != null && engine.thrustTransforms.Count > 0 && part?.transform != null)
+            {
+                Vector3d sum = Vector3d.zero;
+                for (int i = 0; i < engine.thrustTransforms.Count; i++)
+                {
+                    var tr = engine.thrustTransforms[i];
+                    if (tr == null) continue;
+                    var dir = part.transform.TransformDirection(-tr.forward);
+                    if (dir.sqrMagnitude <= 1e-12d) continue;
+                    sum += dir.normalized;
+                }
+                if (sum.sqrMagnitude > 1e-12d)
+                    return sum.normalized;
+            }
+
+            if (part?.transform != null)
+            {
+                var fallback = part.transform.up;
+                if (fallback.sqrMagnitude > 1e-12d)
+                    return fallback.normalized;
+            }
+            return Vector3d.up;
+        }
+
+        private static void ClassifyEngines(List<EngineBuildRecord> records)
+        {
+            if (records == null || records.Count == 0) return;
+
+            foreach (var r in records)
+            {
+                bool isElectric = r.PropellantNames.Any(p => string.Equals(p, "ElectricCharge", StringComparison.OrdinalIgnoreCase));
+                if (isElectric)
+                    r.Role = EngineRole.Electric;
+            }
+
+            foreach (var r in records)
+            {
+                if (r.Role == EngineRole.Electric) continue;
+                if (r.SelfContainedPropellant && r.HasAbortAction)
+                    r.Role = EngineRole.EscapeTower;
+            }
+
+            double maxThrustkN = records
+                .Where(r => r.Role != EngineRole.Electric && r.Role != EngineRole.EscapeTower)
+                .Sum(r => r.ThrustkN);
+            double settlingThresholdkN = Math.Max(0.1d, maxThrustkN * SettlingThrustFractionOfMax);
+            var bottomMainDirection = GetBottomMainThrustDirection(records);
+
+            foreach (var r in records)
+            {
+                if (r.Role == EngineRole.Electric || r.Role == EngineRole.EscapeTower)
+                    continue;
+                var dot = Vector3d.Dot(r.ThrustDirection.normalized, bottomMainDirection);
+                if (r.SelfContainedPropellant && r.ThrustkN < settlingThresholdkN && dot > 0.9d)
+                    r.Role = EngineRole.Settling;
+            }
+
+            foreach (var r in records)
+            {
+                if (r.Role == EngineRole.Electric || r.Role == EngineRole.EscapeTower || r.Role == EngineRole.Settling)
+                    continue;
+                var dot = Vector3d.Dot(r.ThrustDirection.normalized, bottomMainDirection);
+                if (dot < 0.8d)
+                    r.Role = EngineRole.Retro;
+            }
+
+            foreach (var r in records)
+            {
+                if (r.Role == EngineRole.Electric || r.Role == EngineRole.EscapeTower || r.Role == EngineRole.Settling || r.Role == EngineRole.Retro)
+                    continue;
+                r.Role = r.SelfContainedPropellant ? EngineRole.Solid : EngineRole.Main;
+            }
+        }
+
+        /// <summary>Thrust direction of the highest-thrust engine in the bottom-most stage (for retro detection).</summary>
+        private static Vector3d GetBottomMainThrustDirection(List<EngineBuildRecord> records)
+        {
+            var bottom = records
+                .Where(r => r.Role != EngineRole.Electric && r.Role != EngineRole.EscapeTower)
+                .OrderByDescending(r => r.StageNumber)
+                .ThenByDescending(r => r.ThrustkN)
+                .FirstOrDefault();
+            if (bottom == null)
+                return Vector3d.up;
+            var dir = bottom.ThrustDirection;
+            if (dir.sqrMagnitude <= 1e-12d)
+                return Vector3d.up;
+            return dir.normalized;
+        }
+
+        private static Dictionary<string, Dictionary<int, EngineRole>> LoadEngineRoleOverrides()
+        {
+            var result = new Dictionary<string, Dictionary<int, EngineRole>>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!File.Exists(EngineOverridePath))
+                    return result;
+                var node = ConfigNode.Load(EngineOverridePath);
+                if (node == null) return result;
+                foreach (var vesselNode in node.GetNodes("VESSEL"))
+                {
+                    var vesselKey = vesselNode.GetValue("key");
+                    if (string.IsNullOrEmpty(vesselKey)) continue;
+                    var map = new Dictionary<int, EngineRole>();
+                    foreach (var ov in vesselNode.GetNodes("OVERRIDE"))
+                    {
+                        var partStr = ov.GetValue("partId");
+                        var roleStr = ov.GetValue("role");
+                        if (!int.TryParse(partStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var partId))
+                            continue;
+                        if (!Enum.TryParse(roleStr, true, out EngineRole role))
+                            continue;
+                        map[partId] = role;
+                    }
+                    if (map.Count > 0)
+                        result[vesselKey] = map;
+                }
+            }
+            catch
+            {
+                // ignore malformed override file and continue with defaults.
+            }
+            return result;
+        }
+
+        private static void SaveEngineRoleOverrides()
+        {
+            try
+            {
+                var root = new ConfigNode("OPC_ENGINE_ROLE_OVERRIDES");
+                foreach (var vesselKv in EngineRoleOverrides)
+                {
+                    var vesselNode = root.AddNode("VESSEL");
+                    vesselNode.AddValue("key", vesselKv.Key);
+                    foreach (var roleKv in vesselKv.Value)
+                    {
+                        var ov = vesselNode.AddNode("OVERRIDE");
+                        ov.AddValue("partId", roleKv.Key.ToString(CultureInfo.InvariantCulture));
+                        ov.AddValue("role", roleKv.Value.ToString());
+                    }
+                }
+                var dir = Path.GetDirectoryName(EngineOverridePath);
+                if (!string.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
+                root.Save(EngineOverridePath);
+            }
+            catch
+            {
+                // best-effort persistence
+            }
         }
 
         private static void SampleAtmosphereCurve(ModuleEngines engine, EngineEntry entry)
@@ -308,6 +670,50 @@ namespace OrbitalPayloadCalculator.Services
                 entry.ThrustCurveFractions[i] = f;
                 entry.ThrustCurveMultipliers[i] = (double)engine.thrustCurve.Evaluate((float)f);
             }
+        }
+
+        /// <summary>
+        /// Identifies fairing parts (jettisoned at staging): stock, Procedural Fairings mod, cargo bays.
+        /// Uses part.inverseStage as jettison stage (when that stage fires, fairing is released).
+        /// </summary>
+        private static void BuildFairingMasses(IList<Part> parts, Dictionary<int, StageInfo> stageMap, bool treatCargoBayAsFairing = false)
+        {
+            if (parts == null || stageMap == null) return;
+
+            foreach (var part in parts)
+            {
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                if (!IsFairingPart(part, treatCargoBayAsFairing)) continue;
+                if (!stageMap.TryGetValue(part.inverseStage, out var si)) continue;
+
+                double partMass = (double)part.mass;
+                if (part.Resources != null)
+                    foreach (PartResource res in part.Resources)
+                        if (res?.info != null)
+                            partMass += res.amount * res.info.density;
+
+                if (partMass > 1e-9d)
+                    si.FairingMassTons += partMass;
+            }
+        }
+
+        private static bool IsFairingPart(Part part, bool treatCargoBayAsFairing = false)
+        {
+            if (part?.Modules == null) return false;
+
+            if (part.Modules.Contains("ModuleProceduralFairing"))
+                return true;
+            if (treatCargoBayAsFairing && part.Modules.Contains("ModuleCargoBay"))
+                return true;
+            if (part.Modules.Contains("ProceduralFairingSide"))
+                return true;
+
+            var name = part.partInfo?.name ?? "";
+            if (string.IsNullOrEmpty(name)) return false;
+
+            return name.IndexOf("fairing", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("shroud", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("nosecone", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>
@@ -340,7 +746,7 @@ namespace OrbitalPayloadCalculator.Services
             {
                 foreach (var part in parts)
                 {
-                    if (part == null || IsLaunchClamp(part)) continue;
+                    if (part == null || IsExcludedFromCalculation(part)) continue;
                     if (part.inverseStage != st) continue;
                     if (!part.Modules.Contains("ModuleDecouple") && !part.Modules.Contains("ModuleAnchoredDecoupler"))
                         continue;
@@ -393,6 +799,7 @@ namespace OrbitalPayloadCalculator.Services
                 foreach (var p in parts)
                 {
                     if (p == null || !releasedIds.Contains(p.GetInstanceID())) continue;
+                    if (IsExcludedFromCalculation(p)) continue;
                     double partTotalMass = (double)p.mass;
                     double partResourceMass = 0d;
                     if (p.Resources != null)
@@ -445,6 +852,28 @@ namespace OrbitalPayloadCalculator.Services
         {
             return part.Modules.Contains("LaunchClamp")
                 || part.Modules.Contains("ModuleLaunchClamp");
+        }
+
+        /// <summary>Excludes parts that should not participate in any calculation: launch clamps, launch pads (MLP, AASA, etc.).</summary>
+        private static bool IsExcludedFromCalculation(Part part)
+        {
+            if (part == null) return true;
+            if (IsLaunchClamp(part)) return true;
+            var manufacturer = part.partInfo?.manufacturer ?? "";
+            var partName = part.partInfo?.name ?? part.name ?? "";
+            // Modular Launch Pads (Alphadyne)
+            if (manufacturer.IndexOf("Alphadyne", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (partName.IndexOf("AM.MLP", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (partName.IndexOf("AM_MLP", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (partName.IndexOf("_MLP", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            // Andromeda AeroSpace Agency launch pad (aasa.ag.launch.pad) and similar
+            if (partName.IndexOf("launch.pad", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            return false;
         }
     }
 }

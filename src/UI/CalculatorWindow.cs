@@ -19,6 +19,8 @@ namespace OrbitalPayloadCalculator.UI
         private const int StagePopupId = 940204;
         private const int AdvancedHelpPopupId = 940205;
         private const int DvDetailsPopupId = 940206;
+        private const int EngineRolePopupId = 940207;
+        private const int EngineRoleSelectPopupId = 940208;
 
         private readonly PluginSettings _settings;
         private readonly VesselSourceService _vesselService;
@@ -75,6 +77,13 @@ namespace OrbitalPayloadCalculator.UI
 
         private bool _showDvDetailsPopup;
         private Rect _dvDetailsPopupRect;
+        private bool _showEngineRolePopup;
+        private Rect _engineRolePopupRect;
+        private Vector2 _engineRolePopupScroll;
+        private bool _showEngineRoleSelectPopup;
+        private Rect _engineRoleSelectPopupRect;
+        private int _engineRoleSelectPartId;
+        private string _engineRoleSelectPartName = string.Empty;
 
         /// <summary>Per-vessel ground altitude recorded before takeoff, used for "Takeoff Altitude" when in flight.</summary>
         private readonly Dictionary<Guid, double> _takeoffAltitudeByVessel = new Dictionary<Guid, double>();
@@ -103,6 +112,8 @@ namespace OrbitalPayloadCalculator.UI
                     _showStagePopup = false;
                     _showAdvancedHelpPopup = false;
                     _showDvDetailsPopup = false;
+                    _showEngineRolePopup = false;
+                    _showEngineRoleSelectPopup = false;
                 }
                 _visible = value;
             }
@@ -192,6 +203,18 @@ namespace OrbitalPayloadCalculator.UI
                     DrawDvDetailsPopup, Loc("#LOC_OPC_DvDetailsTitle"), _styleManager.WindowStyle);
             }
 
+            if (_showEngineRolePopup)
+            {
+                _engineRolePopupRect = ClickThruBlocker.GUILayoutWindow(EngineRolePopupId, _engineRolePopupRect,
+                    DrawEngineRolePopup, Loc("#LOC_OPC_EngineClassification"), _styleManager.WindowStyle);
+            }
+
+            if (_showEngineRoleSelectPopup)
+            {
+                _engineRoleSelectPopupRect = ClickThruBlocker.GUILayoutWindow(EngineRoleSelectPopupId, _engineRoleSelectPopupRect,
+                    DrawEngineRoleSelectPopup, Loc("#LOC_OPC_SelectEngineRole"), _styleManager.WindowStyle);
+            }
+
             GUI.skin = savedSkin;
         }
 
@@ -204,6 +227,7 @@ namespace OrbitalPayloadCalculator.UI
             _showStagePopup = false;
             _showAdvancedHelpPopup = false;
             _showDvDetailsPopup = false;
+            _showEngineRolePopup = false;
             _lastResult = new PayloadCalculationResult();
             _lastStats = new VesselStats();
             _bodies = Array.Empty<CelestialBody>();
@@ -223,7 +247,6 @@ namespace OrbitalPayloadCalculator.UI
             DrawRightPanel();
             GUILayout.EndHorizontal();
 
-            //GUILayout.Space(4);
             if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(30)))
             {
                 Visible = false;
@@ -384,6 +407,15 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.EndVertical();
 
             GUILayout.Space(6);
+            var cargoBayAsFairing = GUILayout.Toggle(_settings.TreatCargoBayAsFairing, Loc("#LOC_OPC_TreatCargoBayAsFairing"), _styleManager.ToggleStyle ?? GUI.skin.toggle, GUILayout.ExpandWidth(true));
+            if (cargoBayAsFairing != _settings.TreatCargoBayAsFairing)
+            {
+                _settings.SetTreatCargoBayAsFairing(cargoBayAsFairing);
+                Compute();
+            }
+            GUILayout.Label(Loc("#LOC_OPC_TreatCargoBayAsFairingHint"), _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
+            GUILayout.Space(2);
+            GUILayout.Label(Loc("#LOC_OPC_SeparatorEngineHint"), _styleManager.LabelStyle);
             if (GUILayout.Button(Loc("#LOC_OPC_Calculate"), _styleManager.ButtonStyle, GUILayout.Height(32)))
                 Compute();
 
@@ -533,11 +565,14 @@ namespace OrbitalPayloadCalculator.UI
             var rowHeight = fs + 10f;
             var rowSpacing = Mathf.Max(6f, fs * 0.4f);
 
-            if (GUILayout.Toggle(!_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_NormalLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
-                _lossConfig.AggressiveEstimate = false;
+            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Pessimistic, Loc("#LOC_OPC_PessimisticLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+                _lossConfig.EstimateMode = LossEstimateMode.Pessimistic;
             GUILayout.Space(rowSpacing);
-            if (GUILayout.Toggle(_lossConfig.AggressiveEstimate, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
-                _lossConfig.AggressiveEstimate = true;
+            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Normal, Loc("#LOC_OPC_NormalLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+                _lossConfig.EstimateMode = LossEstimateMode.Normal;
+            GUILayout.Space(rowSpacing);
+            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Optimistic, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+                _lossConfig.EstimateMode = LossEstimateMode.Optimistic;
             GUILayout.Space(rowSpacing);
 
             DrawAdvancedLossPanel(fs, rowHeight, rowSpacing);
@@ -639,6 +674,8 @@ namespace OrbitalPayloadCalculator.UI
 
             GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpPriority"), _styleManager.SmallBoldLabelStyle ?? smallStyle);
             DrawHelpSeparator();
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentDerived"), smallStyle);
+            DrawHelpSeparator();
             GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnSpeed"), smallStyle);
             DrawHelpSeparator();
             GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnAlt"), smallStyle);
@@ -710,28 +747,18 @@ namespace OrbitalPayloadCalculator.UI
                 GUILayout.Space(4);
                 GUILayout.BeginVertical(_styleManager.SectionStyle);
                 GUILayout.Label(Loc("#LOC_OPC_ParamsUsedHeader"), _styleManager.HeaderStyle);
-                var srcTurn = _lastResult.Losses.UsedTurnStartSpeedManual
-                    ? Loc("#LOC_OPC_ParamSourceManual")
-                    : (_lossConfig.AggressiveEstimate ? Loc("#LOC_OPC_ParamSourceOptimistic") : Loc("#LOC_OPC_ParamSourceNormal"));
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartSpeed")}: {_lastResult.Losses.UsedTurnStartSpeed:F0} m/s ({srcTurn})", _styleManager.LabelStyle);
-                string srcAlt;
-                if (_lastResult.Losses.UsedTurnStartAltitudeManual)
-                    srcAlt = Loc("#LOC_OPC_ParamSourceManual");
-                else if (_lastResult.Losses.UsedTurnStartAltitudeDerivedFromSpeed)
-                    srcAlt = Loc("#LOC_OPC_ParamSourceDerivedFromSpeed");
-                else
-                    srcAlt = _lossConfig.AggressiveEstimate ? Loc("#LOC_OPC_ParamSourceOptimistic") : Loc("#LOC_OPC_ParamSourceNormal");
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartAlt")}: {_lastResult.Losses.UsedTurnStartAltitude:F0} m ({srcAlt})", _styleManager.LabelStyle);
-                string srcCda;
-                if (_lastResult.Losses.UsedCdAFromFlight)
-                    srcCda = Loc("#LOC_OPC_ParamSourceFromParts");
-                else if (_lastResult.Losses.UsedCdAManual)
-                    srcCda = Loc("#LOC_OPC_ParamSourceManual");
-                else
-                    srcCda = _lossConfig.AggressiveEstimate ? Loc("#LOC_OPC_ParamSourceOptimistic") : Loc("#LOC_OPC_ParamSourceNormal");
+                if (_lastResult.Losses.UsedTurnExponentBottom >= 0d)
+                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentBottom")}: {FormatNum(_lastResult.Losses.UsedTurnExponentBottom)}", _styleManager.LabelStyle);
+                if (_lastResult.Losses.UsedTurnExponentFull >= 0d)
+                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentFull")}: {FormatNum(_lastResult.Losses.UsedTurnExponentFull)}", _styleManager.LabelStyle);
+                var srcTurn = _lastResult.Losses.UsedTurnStartSpeedManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
+                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartSpeed")}: {_lastResult.Losses.UsedTurnStartSpeed:F0} m/s{srcTurn}", _styleManager.LabelStyle);
+                var srcAlt = _lastResult.Losses.UsedTurnStartAltitudeManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
+                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartAlt")}: {_lastResult.Losses.UsedTurnStartAltitude:F0} m{srcAlt}", _styleManager.LabelStyle);
+                var srcCda = _lastResult.Losses.UsedCdAManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
                 if (_lastResult.Losses.UsedCdACoefficient >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_CdACoeffLabel")}: {FormatNum(_lastResult.Losses.UsedCdACoefficient)} ({srcCda})", _styleManager.LabelStyle);
-                GUILayout.Label($"  {Loc("#LOC_OPC_CdAAreaLabel")}: {FormatNum(_lastResult.Losses.UsedCdA)} m² ({srcCda})", _styleManager.LabelStyle);
+                    GUILayout.Label($"  {Loc("#LOC_OPC_CdACoeffLabel")}: {FormatNum(_lastResult.Losses.UsedCdACoefficient)}{srcCda}", _styleManager.LabelStyle);
+                GUILayout.Label($"  {Loc("#LOC_OPC_CdAAreaLabel")}: {FormatNum(_lastResult.Losses.UsedCdA)} m²{srcCda}", _styleManager.LabelStyle);
                 GUILayout.EndVertical();
             }
 
@@ -739,7 +766,9 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Label($"{Loc("#LOC_OPC_EstimatedPayload")}: {FormatNum(_lastResult.EstimatedPayloadTons)} t", _styleManager.HeaderStyle);
 
             GUILayout.Space(6);
-            if (GUILayout.Button(Loc("#LOC_OPC_ShowDvDetails"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            var btnStyle = _styleManager.ButtonStyle;
+            var btnHeight = 28f;
+            if (GUILayout.Button(Loc("#LOC_OPC_ShowDvDetails"), btnStyle, GUILayout.Height(btnHeight)))
             {
                 _showDvDetailsPopup = !_showDvDetailsPopup;
                 if (_showDvDetailsPopup)
@@ -749,15 +778,28 @@ namespace OrbitalPayloadCalculator.UI
                     _dvDetailsPopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
                 }
             }
+            GUILayout.Space(4);
             if (_lastResult.ActiveStages != null && _lastResult.ActiveStages.Count > 0)
             {
-                if (GUILayout.Button(Loc("#LOC_OPC_ShowStageDetails"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                if (GUILayout.Button(Loc("#LOC_OPC_ShowStageDetails"), btnStyle, GUILayout.Height(btnHeight)))
                 {
                     _showStagePopup = !_showStagePopup;
                     if (_showStagePopup)
                     {
                         _stagePopupNeedsCenter = true;
                         _stagePopupRect = new Rect(Screen.width * 0.5f, Screen.height * 0.5f, 10, 10);
+                    }
+                }
+                GUILayout.Space(4);
+                if (GUILayout.Button(Loc("#LOC_OPC_EngineClassification"), btnStyle, GUILayout.Height(btnHeight)))
+                {
+                    _showEngineRolePopup = !_showEngineRolePopup;
+                    _showEngineRoleSelectPopup = false;
+                    if (_showEngineRolePopup)
+                    {
+                        var pw = Mathf.Min(920f, Screen.width * 0.95f);
+                        var ph = Mathf.Min(440f, Screen.height * 0.75f);
+                        _engineRolePopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
                     }
                 }
             }
@@ -782,10 +824,14 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.BeginVertical(_styleManager.PanelStyle);
             foreach (var stage in _lastResult.ActiveStages)
             {
-                var solidTag = stage.HasSolidFuel ? " [SRB]" : "";
-                var uiStage = Math.Max(0, _lastStats.TotalStages - stage.StageNumber);
+                var roleTag = stage.HasSolidFuel ? " [SRB]" : "";
+                if (stage.Engines != null && stage.Engines.Any(e => e.Role == EngineRole.Electric))
+                    roleTag += " [ELEC]";
+                // KSP inverseStage: smaller = top (fires last), larger = bottom (fires first).
+                // Display S1=top .. SN=bottom to match physical order in the popup list.
+                var uiStage = Math.Max(1, stage.StageNumber);
                 GUILayout.Label(
-                    $"  S{uiStage}{solidTag}: " +
+                    $"  S{uiStage}{roleTag}: " +
                     $"Delta-V={FormatDv(stage.DeltaV)} m/s  " +
                     $"Isp={FormatNum(stage.EffectiveIspUsed)}s ({FormatNum(stage.SeaLevelIsp)}/{FormatNum(stage.VacuumIsp)})",
                     _styleManager.LabelStyle);
@@ -883,6 +929,123 @@ namespace OrbitalPayloadCalculator.UI
             GUI.DragWindow(new Rect(0, 0, 10000, 24));
         }
 
+        private void DrawEngineRolePopup(int id)
+        {
+            GUILayout.Space(6);
+            if (_lastStats?.Stages == null || _lastStats.Stages.Count == 0)
+            {
+                GUILayout.Label(Loc("#LOC_OPC_NoVessel"), _styleManager.LabelStyle);
+                if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
+                    _showEngineRolePopup = false;
+                GUI.DragWindow(new Rect(0, 0, 10000, 24));
+                return;
+            }
+
+            GUILayout.Label(Loc("#LOC_OPC_EngineClassificationHint"), _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
+            GUILayout.Space(4);
+
+            _engineRolePopupScroll = GUILayout.BeginScrollView(_engineRolePopupScroll, GUILayout.ExpandWidth(true), GUILayout.MaxHeight(360));
+
+            GUILayout.BeginVertical();
+
+            foreach (var stage in _lastStats.Stages.OrderByDescending(s => s.StageNumber))
+            {
+                if (stage?.Engines == null || stage.Engines.Count == 0) continue;
+                // KSP inverseStage: smaller = top, larger = bottom. S1=top, SN=bottom.
+                var uiStage = Math.Max(1, stage.StageNumber);
+                GUILayout.Label($"{Loc("#LOC_OPC_StageBreakdown")} S{uiStage}", _styleManager.HeaderStyle);
+                for (int i = 0; i < stage.Engines.Count; i++)
+                {
+                    var engine = stage.Engines[i];
+                    if (engine == null) continue;
+                    var partName = string.IsNullOrEmpty(engine.PartDisplayName) ? $"#{engine.PartInstanceId}" : TruncateForDisplay(engine.PartDisplayName);
+                    const float rowHeight = 28f;
+                    GUILayout.BeginHorizontal(_styleManager.SectionStyle, GUILayout.Height(rowHeight));
+                    GUILayout.Label(partName, _styleManager.LabelStyleRow, GUILayout.MinWidth(160), GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
+                    GUILayout.Label($"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(engine.Role)}", _styleManager.LabelStyleRow, GUILayout.Width(200), GUILayout.Height(rowHeight));
+
+                    if (GUILayout.Button(Loc("#LOC_OPC_CycleRole"), _styleManager.ButtonStyle, GUILayout.Width(100), GUILayout.Height(rowHeight)))
+                    {
+                        _engineRoleSelectPartId = engine.PartInstanceId;
+                        _engineRoleSelectPartName = partName;
+                        _showEngineRoleSelectPopup = true;
+                        var rw = 320f;
+                        var rh = 280f;
+                        _engineRoleSelectPopupRect = new Rect((Screen.width - rw) * 0.5f, (Screen.height - rh) * 0.5f, rw, rh);
+                    }
+
+                    if (GUILayout.Button(Loc("#LOC_OPC_AutoRole"), _styleManager.ButtonStyle, GUILayout.Width(80), GUILayout.Height(rowHeight)))
+                    {
+                        _vesselService.ClearEngineRoleOverride(_lastStats.VesselPersistentKey, engine.PartInstanceId);
+                        Compute();
+                        GUIUtility.ExitGUI();
+                    }
+
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.Space(4);
+            }
+
+            GUILayout.EndVertical();
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(Loc("#LOC_OPC_ResetAllRoles"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            {
+                _vesselService.ClearAllEngineRoleOverrides(_lastStats.VesselPersistentKey);
+                Compute();
+                GUIUtility.ExitGUI();
+            }
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            {
+                _showEngineRolePopup = false;
+                _showEngineRoleSelectPopup = false;
+            }
+            GUILayout.EndHorizontal();
+
+            GUI.DragWindow(new Rect(0, 0, 10000, 24));
+        }
+
+        private void DrawEngineRoleSelectPopup(int id)
+        {
+            GUILayout.Space(8);
+            GUILayout.Label($"{Loc("#LOC_OPC_SelectRoleFor")}: {TruncateForDisplay(_engineRoleSelectPartName, 26, 12)}", _styleManager.LabelStyle);
+            GUILayout.Space(8);
+
+            var roles = new[] { EngineRole.Main, EngineRole.Solid, EngineRole.Electric, EngineRole.Retro, EngineRole.Settling, EngineRole.EscapeTower };
+            foreach (var role in roles)
+            {
+                if (GUILayout.Button(LocEngineRole(role), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                {
+                    _vesselService.SetEngineRoleOverride(_lastStats.VesselPersistentKey, _engineRoleSelectPartId, role);
+                    _showEngineRoleSelectPopup = false;
+                    Compute();
+                    GUIUtility.ExitGUI();
+                }
+            }
+
+            GUILayout.Space(8);
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                _showEngineRoleSelectPopup = false;
+
+            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+        }
+
+        private static string LocEngineRole(EngineRole role)
+        {
+            switch (role)
+            {
+                case EngineRole.Main: return Loc("#LOC_OPC_EngineRoleMain");
+                case EngineRole.Solid: return Loc("#LOC_OPC_EngineRoleSolid");
+                case EngineRole.Electric: return Loc("#LOC_OPC_EngineRoleElectric");
+                case EngineRole.Retro: return Loc("#LOC_OPC_EngineRoleRetro");
+                case EngineRole.Settling: return Loc("#LOC_OPC_EngineRoleSettling");
+                case EngineRole.EscapeTower: return Loc("#LOC_OPC_EngineRoleEscapeTower");
+                default: return role.ToString();
+            }
+        }
+
         private void ResetAll()
         {
             InvalidateWindowHeight();
@@ -890,7 +1053,7 @@ namespace OrbitalPayloadCalculator.UI
             _inclinationInput = "0";
             _altitudeUnitIndex = 1;
 
-            _lossConfig.AggressiveEstimate = false;
+            _lossConfig.EstimateMode = LossEstimateMode.Normal;
             ResetAdvancedLossSettings();
 
             _targets.LaunchBody = null;
@@ -902,6 +1065,8 @@ namespace OrbitalPayloadCalculator.UI
             _showVesselPopup = false;
             _showStagePopup = false;
             _showDvDetailsPopup = false;
+            _showEngineRolePopup = false;
+            _showEngineRoleSelectPopup = false;
 
             RefreshBodies();
             ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
@@ -1000,6 +1165,7 @@ namespace OrbitalPayloadCalculator.UI
             _lastBodyName = _targets.LaunchBody != null
                 ? _targets.LaunchBody.displayName.LocalizeBodyName()
                 : Loc("#LOC_OPC_None");
+            _vesselService.TreatCargoBayAsFairing = _settings.TreatCargoBayAsFairing;
             _lastStats = _vesselService.ReadCurrentStats();
             _lastResult = PayloadCalculator.Compute(_lastStats, _targets, _lossConfig);
         }
@@ -1178,6 +1344,22 @@ namespace OrbitalPayloadCalculator.UI
         {
             if (text == null) return "";
             return text.Length <= maxChars ? text : text.Substring(0, maxChars - 1) + "\u2026";
+        }
+
+        /// <summary>
+        /// Truncate for display, using smaller limit for CJK (wide) characters.
+        /// CJK chars display ~2x Latin width; Latin limit ~36, CJK limit ~16.
+        /// </summary>
+        private static string TruncateForDisplay(string text, int maxLatinChars = 36, int maxCjkChars = 16)
+        {
+            if (text == null || text.Length == 0) return "";
+            bool hasCjk = false;
+            foreach (var c in text)
+            {
+                if (c >= '\u4e00' && c <= '\u9fff') { hasCjk = true; break; }
+            }
+            var limit = hasCjk ? maxCjkChars : maxLatinChars;
+            return text.Length <= limit ? text : text.Substring(0, limit - 1) + "\u2026";
         }
 
         private static string FormatNum(double value)
