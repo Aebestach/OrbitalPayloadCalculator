@@ -314,7 +314,7 @@ $$
 
 **只要 propellants 中包含 ElectricCharge，即视为电推引擎。**
 
-实现示例：`engine.propellants` 中任意 `prop.name == "ElectricCharge"` → `EngineRole = Electric`。
+实现示例：`engine.propellants` 中任意 `prop.name == ElectricCharge` → `EngineRole = Electric`。
 
 ### 计算方式：与液推、固推一样计算
 
@@ -333,7 +333,7 @@ $$
 
 - 参与各阶段的 Delta-V 累加
 - 参与燃料分配：按 propellants 分配其所需推进剂（电推分 ElectricCharge/氙等，液推分液氧等），propellants 没有的绝不分配
-- 无需单独的"电推分支"
+- 无需单独的 ***电推分支***
 
 ## 3.4 吸气式引擎
 

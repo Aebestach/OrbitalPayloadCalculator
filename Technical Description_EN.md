@@ -290,7 +290,7 @@ Engines that do not participate in Delta-V or fuel allocation (Retro/Settling/Es
 
 ### Principle
 
-Retro engines have thrust direction inconsistent with the vehicle's bottom-stage main thrust (dot product < 0.8, including reverse and lateral). "Bottom-stage main thrust direction" is taken from the thrust direction of the single engine with the largest StageNumber (bottom stage, first to fire) and highest thrust among Delta-V-participating engines (liquid, solid, electric).
+Retro engines have thrust direction inconsistent with the vehicle's bottom-stage main thrust (dot product < 0.8, including reverse and lateral). 「Bottom-stage main thrust direction」is taken from the thrust direction of the single engine with the largest StageNumber (bottom stage, first to fire) and highest thrust among Delta-V-participating engines (liquid, solid, electric).
 
 ### Thrust Direction Retrieval
 
@@ -314,7 +314,7 @@ Conclusion: **Thrust direction can be correctly identified in both editor and fl
 
 **Any engine whose propellants include ElectricCharge is classified as electric.**
 
-Example: `engine.propellants` contains any `prop.name == "ElectricCharge"` → `EngineRole = Electric`.
+Example: `engine.propellants` contains any `prop.name == ElectricCharge` → `EngineRole = Electric`.
 
 ### Calculation: Same as Liquid and Solid
 
@@ -333,7 +333,7 @@ Electric propulsion uses the same Delta-V calculation logic as liquid and solid,
 
 - Participates in stage Delta-V accumulation
 - Participates in fuel allocation: assign propellants per propellants list (electric gets ElectricCharge/xenon etc., liquid gets LOx etc.); never assign what is not in propellants
-- No separate "electric branch" needed
+- No separate ***electric branch*** needed
 
 ## 3.4 Air-Breathing Engines
 
