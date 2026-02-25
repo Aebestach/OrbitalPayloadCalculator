@@ -107,8 +107,5 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 -   **Calculation Accuracy**
     -   Actual launches are affected by factors like gravity turn speed vs. start height, flight trajectory, vessel aerodynamics, and piloting style. Therefore, the calculated payload is a theoretical estimate.
     -   If actual flight results deviate from calculations, try optimizing gravity turn speed, turn height, and related parameters in MechJeb (MJ) to get closer to theoretical performance.
-
--   **Development Status**
-
     -   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every ***aerodynamic disaster***.
     -   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true ***Chief Engineer*** together.
