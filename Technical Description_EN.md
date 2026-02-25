@@ -234,19 +234,19 @@ Compute semi-major axis a = (rPe + rAp) / 2
 Compute ratio α = a / r₀
 Compute eccentricity e = (rAp − rPe) / (rAp + rPe)
 
-# 1. Low orbit
+1. Low orbit
 if α < 1.5:
     use Model A
 
-# 2. Intermediate orbit
+2. Intermediate orbit
 else if 1.5 ≤ α ≤ 2.0:
     if e < 0.1:
         use Model A
     else:
         use Model B
 
-# 3. High / distant orbit
-else:  # α > 2.0
+3. High / distant orbit
+else:  α > 2.0
     use Model B
 ```
 

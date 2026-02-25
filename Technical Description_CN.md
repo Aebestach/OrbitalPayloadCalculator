@@ -14,20 +14,20 @@
 
 | 数据 | 计算方式 | 使用的天体属性 |
 |------|----------|----------------|
-| **地表理想 Delta-V** | 两模型按 $\alpha = a/r_0$、$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$ 自动选择。**模型 A**（α < 1.5 或 α ≤ 2 且 e < 0.1）：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。**模型 B**（其余）：霍曼 burn1+burn2，椭圆轨道 +burn3 | `gravParameter`、`Radius`、rPe、rAp |
-| **轨道速度** | $v = \sqrt{\mu(2/r_{\mathrm{Pe}} - 1/a)}$ | `gravParameter`、`Radius`、轨道高度 |
-| **平面变轨 Delta-V** | $2v \sin(\theta/2)$ | 轨道速度、发射纬度、目标倾角 |
+| **地表理想 Delta-V** | 两模型按 $`\alpha = a/r_0`$ 、 $`e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})`$ 自动选择。**模型 A**（α < 1.5 或 α ≤ 2 且 e < 0.1）：$`\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}`$ 。**模型 B**（其余）：霍曼 burn1+burn2 ， 椭圆轨道 +burn3 | `gravParameter`、`Radius`、rPe、rAp |
+| **轨道速度** | $`v = \sqrt{\mu(2/r_{\mathrm{Pe}} - 1/a)}`$ | `gravParameter`、`Radius`、轨道高度 |
+| **平面变轨 Delta-V** | $`2v \sin(\theta/2)`$ | 轨道速度、发射纬度、目标倾角 |
 | **自转增益/损失** | 赤道速度 + 纬度修正 | `rotationPeriod`、`Radius` |
 | **阶段 Delta-V** | 齐奥尔科夫斯基公式 | 质量、推进剂、Isp |
 | **大气 Isp 混合** | 底级时间步进模拟采样 `GetPressure(h)`，按瞬时压力插值 `engine.atmosphereCurve` | `atmosphereDepth`、`atmospherePressureSeaLevel` |
-| **仿真中重力损失** | 时间步进 $g = \mu/R^2$ | `gravParameter`、`Radius` |
-| **仿真中大气密度** | $\rho = p/(R_{\mathrm{air}} \cdot T)$ | `GetPressure(h)`、`GetTemperature(h)` |
+| **仿真中重力损失** | 时间步进 $`g = \mu/R^2`$ | `gravParameter`、`Radius` |
+| **仿真中大气密度** | $`\rho = p/(R_{\mathrm{air}} \cdot T)`$ | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
 | **分离组（助推器干质量）** | 扫描 `maxPropStageNum-1` 至 0 所有阶段的分离器；发动机燃尽时抛离 | 部件层级、`inverseStage`、`ModuleDecouple` |
 
 ### 地表理想 Delta-V 模型详情
 
-两体、冲量式；忽略大气与重力损失。符号：$\mu$ = gravParameter，$r_0$ = 天体半径，$r_{\mathrm{Pe}}$/$r_{\mathrm{Ap}}$ = 近点/远点半径，$a = (r_{\mathrm{Pe}}+r_{\mathrm{Ap}})/2$，$\alpha = a/r_0$，$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$。
+两体、冲量式；忽略大气与重力损失。符号：$`\mu`$ = gravParameter ， $`r_0`$ = 天体半径 ， $`r_{\mathrm{Pe}}`$/$`r_{\mathrm{Ap}}`$ = 近点/远点半径 ， $`a = (r_{\mathrm{Pe}}+r_{\mathrm{Ap}})/2`$ ， $`\alpha = a/r_0`$ ， $`e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})`$ 。
 
 **模型选择（α, e）：**
 
@@ -35,9 +35,9 @@
 - **1.5 ≤ α ≤ 2.0**：若 e < 0.1 → 模型 A；若 e ≥ 0.1 → 模型 B
 - **α > 2.0** → 模型 B（霍曼结构）
 
-**模型 A：** 全局最小 Delta-V。椭圆：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。圆轨道：$r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$ 时同上。
+**模型 A：** 全局最小 Delta-V。椭圆：$`\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}`$ 。圆轨道：$`r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r`$ 时同上。
 
-**模型 B：** 分段点火。圆轨道 ($r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$)：$\mathrm{burn1} = \sqrt{\mu/r_0} \cdot \sqrt{2r/(r_0+r)}$，$\mathrm{burn2} = \sqrt{\mu/r} \cdot (1-\sqrt{2r_0/(r_0+r)})$。椭圆：在 $r_{\mathrm{Pe}}$ 处 burn1+burn2，远点处 burn3。两模型当 $r \to \infty$ 时收敛为 $\sqrt{2\mu/r_0}$（逃逸速度）。
+**模型 B：** 分段点火。圆轨道 ($`r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r`$)：$`\mathrm{burn1} = \sqrt{\mu/r_0} \cdot \sqrt{2r/(r_0+r)}`$ ， $`\mathrm{burn2} = \sqrt{\mu/r} \cdot (1-\sqrt{2r_0/(r_0+r)})`$ 。椭圆：在 $`r_{\mathrm{Pe}}`$ 处 burn1+burn2 ， 远点处 burn3。两模型当 $`r \to \infty`$ 时收敛为 $`\sqrt{2\mu/r_0}`$ （逃逸速度）。
 
 完整推导与公式见 [第二部分：地表→轨道理想 Delta-V 模型](#第二部分地表轨道理想-delta-v-模型)（见下文）。
 
@@ -47,12 +47,12 @@
 
 | 数据 | 估计方式 | 说明 |
 |------|----------|------|
-| **CdA（气动阻力面积）** | 编辑器和飞行模式一致：$C_d \times \sqrt{m_{\mathrm{wet}}}$，$m_{\mathrm{wet}}$ 为湿质量（吨）。用户输入 $C_d$ (0.3–2.0) 或默认 0.50/1.0/1.5（乐观/普通/悲观） | $C_d$ 系数 × √质量 启发式 |
+| **CdA（气动阻力面积）** | 编辑器和飞行模式一致：$`C_d \times \sqrt{m_{\mathrm{wet}}}`$ ， $`m_{\mathrm{wet}}`$ 为湿质量（吨）。用户输入 $`C_d`$ (0.3–2.0) 或默认 0.50/1.0/1.5（乐观/普通/悲观） | $`C_d`$ 系数 × √质量 启发式 |
 | **重力损失**（无仿真时） | `FallbackEstimate` 经验公式 | 无推力/Isp 数据时使用的替代公式 |
-| **大气损失**（无仿真时） | $A_{\mathrm{atmo}} + B_{\mathrm{atmo}}$ 经验公式 | 基于 $g_N$、$p_N$、$d_N$ 归一化缩放因子的拟合公式 |
-| **姿态损失** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$，$f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert$。$A$、$B$ 由模式及 $g_N$、$d_N$、$p_N$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
-| **Turn Start Speed** | $v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})$，$v_{\mathrm{base}}$ 按模式取 55/80/95 m/s | 基于重力、大气归一化得出的启转速度 |
-| **Turn Start Altitude** | $h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)$ | 启转高度估计 |
+| **大气损失**（无仿真时） | $`A_{\mathrm{atmo}} + B_{\mathrm{atmo}}`$ 经验公式 | 基于 $`g_N`$ 、 $`p_N`$ 、 $`d_N`$ 归一化缩放因子的拟合公式 |
+| **姿态损失** | $`(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})`$ ， $`f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert`$ 。 $`A`$ 、 $`B`$ 由模式及 $`g_N`$ 、 $`d_N`$ 、 $`p_N`$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
+| **Turn Start Speed** | $`v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})`$ ， $`v_{\mathrm{base}}`$ 按模式取 55/80/95 m/s | 基于重力、大气归一化得出的启转速度 |
+| **Turn Start Altitude** | $`h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)`$ | 启转高度估计 |
 | **转弯指数（重力转弯）** | 由启转速度线性拟合得出，典型值：底级 0.40/0.58/0.65，全段 0.45/0.70/0.80 | 经验值；控制俯仰转向速率 |
 
 ### 姿态损失典型参考
@@ -98,29 +98,29 @@
 
 ## 2.2 基本符号
 
-$\mu$ = 天体引力参数 (gravParameter)  
-$r_0$ = 天体半径（发射点到中心距离）  
-$r$ = 目标圆轨道半径 = $r_0$ + 目标高度  
-$r_{\mathrm{Pe}}$ = 目标近点半径  
-$r_{\mathrm{Ap}}$ = 目标远点半径  
-$a$ = 半长轴 = $(r_{\mathrm{Pe}} + r_{\mathrm{Ap}}) / 2$  
+$`\mu`$ = 天体引力参数 (gravParameter)  
+$`r_0`$ = 天体半径（发射点到中心距离）  
+$`r`$ = 目标圆轨道半径 = $`r_0`$ + 目标高度  
+$`r_{\mathrm{Pe}}`$ = 目标近点半径  
+$`r_{\mathrm{Ap}}`$ = 目标远点半径  
+$`a`$ = 半长轴 = $`(r_{\mathrm{Pe}} + r_{\mathrm{Ap}}) / 2`$  
 
-$\alpha$ = $a / r_0$（用于模型选择）  
-$e$ = $(r_{\mathrm{Ap}} - r_{\mathrm{Pe}}) / (r_{\mathrm{Ap}} + r_{\mathrm{Pe}})$（椭圆偏心率）  
+$`\alpha`$ = $`a / r_0`$ （用于模型选择）  
+$`e`$ = $`(r_{\mathrm{Ap}} - r_{\mathrm{Pe}}) / (r_{\mathrm{Ap}} + r_{\mathrm{Pe}})`$ （椭圆偏心率）  
 
 ## 2.3 模型 A：能量最小模型（全局最优）
 
 ### 推导基础
 
-初始能量：$E_0 = -\mu/r_0$  
+初始能量：$`E_0 = -\mu/r_0`$  
 
-目标圆轨道能量：$E = -\mu/(2r)$  
+目标圆轨道能量：$`E = -\mu/(2r)`$  
 
-目标椭圆轨道能量：$E = -\mu/(2a)$，其中 $a = (r_{\mathrm{Pe}} + r_{\mathrm{Ap}})/2$  
+目标椭圆轨道能量：$`E = -\mu/(2a)`$ ， 其中 $`a = (r_{\mathrm{Pe}} + r_{\mathrm{Ap}})/2`$  
 
-所需能量增量：$\Delta E = E - E_0$  
+所需能量增量：$`\Delta E = E - E_0`$  
 
-由 $\frac{1}{2}v^2 = \Delta E$ 得：
+由 $`\frac{1}{2}v^2 = \Delta E`$ 得：
 
 ### 最终公式
 
@@ -143,7 +143,7 @@ $$
 - 不假设霍曼结构  
 - 任意目标半径适用  
 
-当 $r \to \infty$ 时：$\text{Delta-V}_A \to \sqrt{2\mu/r_0}$（逃逸速度）
+当 $`r \to \infty`$ 时：$`\text{Delta-V}_A \to \sqrt{2\mu/r_0}`$ （逃逸速度）
 
 ## 2.4 模型 B：霍曼结构模型（工程结构解）
 
@@ -161,7 +161,7 @@ $$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r} } \right)
 $$
 
-总 Delta-V：$\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2}$
+总 Delta-V：$`\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2}`$
 
 ### 情况 2：目标为椭圆轨道 (rPe < rAp)
 
@@ -177,20 +177,20 @@ $$
 \mathrm{burn3} = \sqrt{ \frac{2\mu\,r_\mathrm{Ap}}{ r_\mathrm{Pe}(r_\mathrm{Pe} + r_\mathrm{Ap}) } } - \sqrt{ \frac{\mu}{r_\mathrm{Pe}} }
 $$
 
-总 Delta-V：$\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
+总 Delta-V：$`\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}`$
 
 ### 特性
 
 - 结构清晰  
 - 可直接对应机动步骤  
 - 适用于远轨道  
-- 当 $r \gg r_0$ 或 $r_{\mathrm{Ap}} \gg r_{\mathrm{Pe}}$ 时与模型 A 收敛  
+- 当 $`r \gg r_0`$ 或 $`r_{\mathrm{Ap}} \gg r_{\mathrm{Pe}}`$ 时与模型 A 收敛  
 
-当 $r \to \infty$ 时：$\text{Delta-V}_B \to \sqrt{2\mu/r_0}$
+当 $`r \to \infty`$ 时：$`\text{Delta-V}_B \to \sqrt{2\mu/r_0}`$
 
 ## 2.5 模型选择边界（任意天体通用）
 
-定义：$\alpha = a/r_0$（$a$ 为半长轴），$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$
+定义：$`\alpha = a/r_0`$ （ $`a`$ 为半长轴）， $`e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})`$
 
 ### 1. 近地轨道区域
 
@@ -234,19 +234,19 @@ $$
 计算相对比率 α = a / r₀
 计算偏心率 e = (rAp − rPe) / (rAp + rPe)
 
-# 1. 近地轨道区域
+1. 近地轨道区域
 若 α < 1.5：
     使用模型 A
 
-# 2. 中间轨道区域
+2. 中间轨道区域
 否则若 1.5 ≤ α ≤ 2.0：
     若 e < 0.1：
         使用模型 A
     否则：
         使用模型 B
 
-# 3. 高升轨 / 远轨道区域
-否则：  # α > 2.0
+3. 高升轨 / 远轨道区域
+否则： α > 2.0
     使用模型 B
 ```
 
@@ -265,7 +265,7 @@ $$
 - 低偏心高轨椭圆也可用
 - 更贴近游戏内机动节点（Maneuver Node）或实际分段操作
 
-两者在 $r \to \infty$ 或高远轨椭圆时收敛为 $\sqrt{2\mu/r_0}$，即逃逸速度。
+两者在 $`r \to \infty`$ 或高远轨椭圆时收敛为 $`\sqrt{2\mu/r_0}`$ ， 即逃逸速度。
 
 ---
 
@@ -341,7 +341,7 @@ $$
 
 ## 3.5 沉底引擎识别
 
-- **推力**：$\max\mathrm{Thrust} < 1\%$ 全箭最大推力（且至少 0.1 kN），即 $\mathrm{Thrust}_{\mathrm{kN}} < \max(0.1,\, 0.01 \times \max\mathrm{Thrust}_{\mathrm{kN}})$
+- **推力**：$`\max\mathrm{Thrust} < 1\%`$ 全箭最大推力（且至少 0.1 kN），即 $`\mathrm{Thrust}_{\mathrm{kN}} < \max(0.1,\, 0.01 \times \max\mathrm{Thrust}_{\mathrm{kN}})`$
 - **燃料**：自身携带燃料（Part 的 Resources 中含该引擎 propellants 所需的推进剂），排除电推。不限定具体资源名，以兼容 RO 等 mod 的不同燃料类型
 - **方向**：推力方向与底级主推方向同向，点积 > 0.9
 
