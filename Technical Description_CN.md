@@ -23,7 +23,6 @@
 | **仿真中重力损失** | 时间步进 $`g = \mu/R^2`$ | `gravParameter`、`Radius` |
 | **仿真中大气密度** | $`\rho = p/(R_{\mathrm{air}} \cdot T)`$ | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
-| **分离组（助推器干质量）** | 扫描 `maxPropStageNum-1` 至 0 所有阶段的分离器；发动机燃尽时抛离 | 部件层级、`inverseStage`、`ModuleDecouple` |
 | **底级海平面 TWR** | 推力按所选天体海平面气压下的 Isp 计算；重力取 `body.GeeASL` | `atmospherePressureSeaLevel`、`GeeASL`、`engine.atmosphereCurve` |
 
 ### 地表理想 Delta-V 模型详情
@@ -392,3 +391,32 @@ Retro、Settling、EscapeTower 三类：
 | Andromeda AeroSpace Agency (AASA) 发射台 | partName 含 `launch.pad`（如 `aasa.ag.launch.pad`） |
 
 排除后，这些部件的质量、燃料、引擎均不会被计入统计数据。
+
+## 3.10 燃料导管（FTX-2 External Fuel Duct）建模
+
+Kerbal X 等载具使用燃料导管将捆绑助推器的燃料导向主堆芯，主推优先消耗助推器燃料后再分离空助推器。若不建模燃料导管，燃料归属可能错误，导致 Delta-V 与分离质量计算偏差。
+
+### 识别与解析
+
+- **部件识别**：`part.partInfo.name == "fuelLine"`，或 `part.Modules` 含 `CModuleFuelLine` / `ModuleFuelLine` / `FuelLine`，或 `part` 为 `CompoundPart` 且含上述模块
+- **流向**：`part.parent` = Source（燃料由此流出），另一端 = Target（燃料流入）。KSP CompoundPart 的 `attachNodes` 常为空，需通过反射获取另一端的 Part 引用
+- **数据结构**：`FuelLineEdge { SourcePartId, TargetPartId }`
+
+### 燃料分配
+
+1. 构建燃料流图 `flowGraph: sourcePartId -> [targetPartIds]`
+2. 对每个作为燃料管源的储箱，沿图 BFS 找到可达的、有 Delta-V 引擎的阶段，取其 stageNumber 最大者作为目标阶段
+3. 将该储箱的推进剂从原阶段移除，加入目标阶段；同时累加 `BoosterPhasePropellantTons`（助推器阶段推进剂量）
+4. `AssignPropellantByFuelLines` 在常规燃料累加之后、`RedistributePropellant` 之前执行
+5. `RedistributePropellant` 迁移燃料时同步迁移 `BoosterPhasePropellantTons`
+
+### 分离组调整
+
+- 燃料管源储箱的燃料已归属到主推所在阶段，分离时助推器已空。故 `GroupLiquidPropellantTons` 不包含这些储箱的液推质量，避免重复扣除；分离组内若有任一根燃料导管源，则该组 `GroupLiquidPropellantTons = 0`
+- **重叠去重**：径向分离组与轴向分离组的释放集合可能重叠（如 6 个助推器被 2 个轴向分离器的 released 集合包含）。用 `UniqueDroppedDryMassTons` 对释放部件 ID 去重后只计一次干质量；仿真中通过 `ReleasedPartIds` 与 `droppedPartIds` 避免重复扣除
+
+### 分阶段燃料分配（芦笋式仿真）
+
+- **BoosterPhasePropellantTons**：从燃料导管源转移的推进剂总量，按实际储箱 `amount × density` 累加，**随载具动态计算**（Kerbal X 约 12 t 仅为示例）
+- **BoosterEngineIndices**：径向助推器分离组中的发动机索引；判定条件：单发动机且干质量 < 15 t（启发式阈值，用于区分径向助推器与轴向级）
+- **仿真分配**：先将 `BoosterPhasePropellantTons` 按推力比例分配给所有液推；剩余推进剂仅分配给芯级发动机。助推器发动机在烧完其份额后熄火并抛离，与真实芦笋式时序一致

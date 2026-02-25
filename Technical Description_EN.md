@@ -23,7 +23,6 @@ These values are derived from orbital mechanics and the celestial body's physica
 | **Gravity Loss (in simulation)** | Time-stepped $g = \mu/R^2$ per step | `gravParameter`, `Radius` |
 | **Atmospheric Density (in simulation)** | $\rho = p/(R_{\mathrm{air}} \cdot T)$ | `GetPressure(h)`, `GetTemperature(h)` |
 | **Default Orbit Altitude** | Atmosphere top + 10,000 m | `atmosphereDepth` |
-| **Separation Groups (booster dry mass)** | Decoupler scan over all stages `maxPropStageNum-1` … 0; drop when engines exhaust | Part hierarchy, `inverseStage`, `ModuleDecouple` |
 | **Bottom-stage sea-level TWR** | Thrust uses Isp at selected body's sea-level pressure; gravity from `body.GeeASL` | `atmospherePressureSeaLevel`, `GeeASL`, `engine.atmosphereCurve` |
 
 ### Ideal Delta-V Model Detail (Surface → Orbit)
@@ -392,3 +391,32 @@ The following parts **do not participate** in any mass, fuel, or Delta-V calcula
 | Andromeda AeroSpace Agency (AASA) launch pads | partName contains `launch.pad` (e.g., `aasa.ag.launch.pad`) |
 
 Excluded parts' mass, fuel, and engines are not included in statistics.
+
+## 3.10 Fuel Line (FTX-2 External Fuel Duct) Modeling
+
+Vessels like Kerbal X use fuel lines to feed booster tanks to the core; main engines consume booster fuel first, then empty boosters are jettisoned. Without fuel line modeling, fuel assignment can be wrong, leading to Delta-V and separation mass errors.
+
+### Detection and Parsing
+
+- **Part detection**: `part.partInfo.name == "fuelLine"`, or `part.Modules` contains `CModuleFuelLine` / `ModuleFuelLine` / `FuelLine`, or part is `CompoundPart` with that module
+- **Flow direction**: `part.parent` = Source (fuel flows from), other end = Target (fuel flows to). KSP CompoundPart often has empty `attachNodes`; use reflection to get the other-end Part reference
+- **Data structure**: `FuelLineEdge { SourcePartId, TargetPartId }`
+
+### Fuel Assignment
+
+1. Build fuel flow graph `flowGraph: sourcePartId -> [targetPartIds]`
+2. For each tank that is a fuel line source, BFS through the graph to find reachable stages with Delta-V engines; take the one with largest stageNumber as target
+3. Remove that tank's propellant from its original stage and add it to the target stage; also accumulate `BoosterPhasePropellantTons` (booster-phase propellant mass)
+4. `AssignPropellantByFuelLines` runs after normal fuel accumulation and before `RedistributePropellant`
+5. `RedistributePropellant` transfers `BoosterPhasePropellantTons` along with propellant when redistributing stages
+
+### Separation Group Adjustment
+
+- Fuel line source tanks have their fuel assigned to the main engine stage; at separation the booster is empty. `GroupLiquidPropellantTons` therefore excludes liquid propellant from these tanks; if any fuel line source is in a separation group, that group's `GroupLiquidPropellantTons = 0`
+- **Overlap deduplication**: Radial and stack separation groups may overlap (e.g. six boosters contained in two stack decouplers' released sets). `UniqueDroppedDryMassTons` deduplicates by released part IDs; simulation uses `ReleasedPartIds` and `droppedPartIds` to avoid double-dropping mass
+
+### Phased Fuel Allocation (Asparagus Simulation)
+
+- **BoosterPhasePropellantTons**: Total propellant moved from fuel line sources; summed from each tank's `amount × density`, **computed per vessel** (~12 t for Kerbal X is just an example)
+- **BoosterEngineIndices**: Engine indices in radial booster groups; heuristic: single engine and dry mass < 15 t (threshold to distinguish radial boosters from stack stages)
+- **Simulation allocation**: First allocate `BoosterPhasePropellantTons` to all liquid engines by thrust share; remaining propellant goes only to core engine(s). Booster engines exhaust when their share is burned, then separate—matching real asparagus timing

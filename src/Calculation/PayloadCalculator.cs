@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
 
 namespace OrbitalPayloadCalculator.Calculation
 {
@@ -17,12 +19,15 @@ namespace OrbitalPayloadCalculator.Calculation
     /// Parts that separate together when decouplers fire. When all engines in this group exhaust,
     /// we subtract GroupDryMassTons from the stack (simulate dropping empty boosters).
     /// GroupLiquidPropellantTons: liquid fuel in released parts - engines in this group consume this first, then exhaust.
+    /// ReleasedPartIds: for dedup when groups overlap—we only subtract mass of parts not yet dropped.
     /// </summary>
     internal sealed class SeparationGroup
     {
         public double GroupDryMassTons;
         public double GroupLiquidPropellantTons;
         public HashSet<int> EngineIndices;
+        /// <summary> Part.GetInstanceID() of released parts; used to avoid double-dropping when groups overlap. </summary>
+        public HashSet<int> ReleasedPartIds;
     }
 
     /// <summary>
@@ -130,6 +135,18 @@ namespace OrbitalPayloadCalculator.Calculation
 
         /// <summary> When engines in a group exhaust, we drop GroupDryMassTons from the stack. </summary>
         public List<SeparationGroup> SeparationGroups = new List<SeparationGroup>();
+
+        /// <summary> Sum of dry mass of each part in released sets, counted once (no double-count when groups overlap). </summary>
+        public double UniqueDroppedDryMassTons;
+
+        /// <summary> Part instance ID -> dry mass (tons), for dedup in simulation when groups overlap. </summary>
+        public Dictionary<int, double> PartDryMassTonsById;
+
+        /// <summary> Propellant (tons) from fuel line sources—burned first by all engines; when exhausted, booster engines cutoff and we drop radial groups. </summary>
+        public double BoosterPhasePropellantTons;
+
+        /// <summary> Engine indices (into stage.Engines) that are in radial booster groups—they exhaust when BoosterPhasePropellant is burned. </summary>
+        public HashSet<int> BoosterEngineIndices;
     }
 
     internal sealed class VesselStats
@@ -548,10 +565,9 @@ namespace OrbitalPayloadCalculator.Calculation
                 var isBottomStage = stage.StageNumber == maxPropStageNum;
                 if (isBottomStage && stage.SeparationGroups != null && stage.SeparationGroups.Count > 0)
                 {
-                    double droppedDry = 0d;
-                    foreach (var grp in stage.SeparationGroups)
-                        if (grp != null && grp.GroupDryMassTons > 0d)
-                            droppedDry += grp.GroupDryMassTons;
+                    var droppedDry = stage.UniqueDroppedDryMassTons > 0d
+                        ? stage.UniqueDroppedDryMassTons
+                        : stage.SeparationGroups.Where(g => g != null && g.GroupDryMassTons > 0d).Sum(g => g.GroupDryMassTons);
                     stageDry -= droppedDry;
                 }
 
@@ -740,10 +756,9 @@ namespace OrbitalPayloadCalculator.Calculation
             var dryTons = stageDryTons;
             if (isBottomStage && stage.SeparationGroups != null && stage.SeparationGroups.Count > 0)
             {
-                double droppedDry = 0d;
-                foreach (var grp in stage.SeparationGroups)
-                    if (grp != null && grp.GroupDryMassTons > 0d)
-                        droppedDry += grp.GroupDryMassTons;
+                var droppedDry = stage.UniqueDroppedDryMassTons > 0d
+                    ? stage.UniqueDroppedDryMassTons
+                    : stage.SeparationGroups.Where(g => g != null && g.GroupDryMassTons > 0d).Sum(g => g.GroupDryMassTons);
                 dryTons = Math.Max(0.01d, dryTons - droppedDry);
             }
             if (stageWetTons <= dryTons) return 0.0d;
@@ -784,7 +799,7 @@ namespace OrbitalPayloadCalculator.Calculation
         }
 
         private const int SimulateBottomStageDvCacheCapacity = 128;
-        private static readonly Dictionary<(long, long, long, long, long, long, string), double> SimulateBottomStageDvCache = new Dictionary<(long, long, long, long, long, long, string), double>();
+        private static readonly Dictionary<(long, long, long, long, long, long, long, string), double> SimulateBottomStageDvCache = new Dictionary<(long, long, long, long, long, long, long, string), double>();
 
         private static void ClearSimulateBottomStageDvCache()
         {
@@ -811,7 +826,8 @@ namespace OrbitalPayloadCalculator.Calculation
             var keyTurnA = (long)Math.Round(turnStartAlt);
             var keyCd = (long)(userCdA * 100.0d + 0.5d);
             var keyExp = (long)(userTurnExponentBottom * 100.0d + 0.5d);
-            var key = (keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBody);
+            var keyBooster = (long)((stage.BoosterPhasePropellantTons > 0d ? stage.BoosterPhasePropellantTons : 0d) * 1000d);
+            var key = (keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBooster, keyBody);
             if (SimulateBottomStageDvCache.TryGetValue(key, out var cached))
                 return cached;
             if (SimulateBottomStageDvCache.Count >= SimulateBottomStageDvCacheCapacity)
@@ -882,44 +898,111 @@ namespace OrbitalPayloadCalculator.Calculation
                     }
                 }
 
-                const int maxAllocationPasses = 6;
-                for (int pass = 0; pass < maxAllocationPasses; pass++)
+                var boosterPhaseKg = (stage.BoosterPhasePropellantTons > 0d ? stage.BoosterPhasePropellantTons : 0d) * 1000d;
+                var boosterEngineIndices = stage.BoosterEngineIndices;
+                var hasAsparagusPhase = boosterPhaseKg > 1e-3d && boosterEngineIndices != null && boosterEngineIndices.Count > 0;
+
+                if (hasAsparagusPhase)
                 {
-                    bool anyAllocation = false;
-                    foreach (var poolName in new List<string>(poolByNameKg.Keys))
+                    double totalPoolKg = 0d;
+                    foreach (var v in poolByNameKg.Values) totalPoolKg += v;
+                    var phase1Kg = Math.Min(boosterPhaseKg, totalPoolKg);
+                    if (phase1Kg > 1e-6d && totalPoolKg > 1e-6d)
                     {
-                        var remaining = poolByNameKg[poolName];
-                        if (remaining <= 1e-6d) continue;
-
-                        double totalCompatThrust = 0d;
+                        double totalThrust = 0d;
                         for (int i = 0; i < runtimes.Length; i++)
                         {
-                            var rt = runtimes[i];
-                            if (rt.Exhausted) continue;
-                            if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
-                        if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
-                                continue;
-                        totalCompatThrust += rt.Entry.ThrustkN;
+                            if (runtimes[i].Exhausted || runtimes[i].Entry == null || runtimes[i].Entry.Role == EngineRole.Solid) continue;
+                            totalThrust += runtimes[i].Entry.ThrustkN;
                         }
-
-                        if (totalCompatThrust <= 1e-9d) continue;
-                        anyAllocation = true;
-                        for (int i = 0; i < runtimes.Length; i++)
+                        if (totalThrust > 1e-9d)
                         {
-                            var rt = runtimes[i];
-                            if (rt.Exhausted) continue;
-                            if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
-                            if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
-                                continue;
-                            var share = rt.Entry.ThrustkN / totalCompatThrust;
-                            var add = remaining * share;
-                            rt.InitialPropKg += add;
-                            rt.PropRemainingKg += add;
+                            var frac = phase1Kg / totalPoolKg;
+                            for (int i = 0; i < runtimes.Length; i++)
+                            {
+                                var rt = runtimes[i];
+                                if (rt.Exhausted || rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
+                                var share = rt.Entry.ThrustkN / totalThrust;
+                                var add = phase1Kg * share;
+                                rt.InitialPropKg += add;
+                                rt.PropRemainingKg += add;
+                            }
+                            foreach (var k in new List<string>(poolByNameKg.Keys))
+                            {
+                                var r = poolByNameKg[k];
+                                poolByNameKg[k] = Math.Max(0d, r - r * frac);
+                            }
                         }
-                        poolByNameKg[poolName] = 0d;
                     }
+                    var remainingPoolKg = 0d;
+                    foreach (var v in poolByNameKg.Values) remainingPoolKg += v;
+                    if (remainingPoolKg > 1e-6d)
+                    {
+                        double coreThrust = 0d;
+                        for (int i = 0; i < runtimes.Length; i++)
+                        {
+                            if (runtimes[i].Exhausted || runtimes[i].Entry == null || runtimes[i].Entry.Role == EngineRole.Solid) continue;
+                            if (boosterEngineIndices.Contains(i)) continue;
+                            coreThrust += runtimes[i].Entry.ThrustkN;
+                        }
+                        if (coreThrust > 1e-9d)
+                        {
+                            for (int i = 0; i < runtimes.Length; i++)
+                            {
+                                if (boosterEngineIndices.Contains(i)) continue;
+                                var rt = runtimes[i];
+                                if (rt.Exhausted || rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
+                                var share = rt.Entry.ThrustkN / coreThrust;
+                                var add = remainingPoolKg * share;
+                                rt.InitialPropKg += add;
+                                rt.PropRemainingKg += add;
+                            }
+                        }
+                        foreach (var k in poolByNameKg.Keys.ToList())
+                            poolByNameKg[k] = 0d;
+                    }
+                }
+                else
+                {
+                    const int maxAllocationPasses = 6;
+                    for (int pass = 0; pass < maxAllocationPasses; pass++)
+                    {
+                        bool anyAllocation = false;
+                        foreach (var poolName in new List<string>(poolByNameKg.Keys))
+                        {
+                            var remaining = poolByNameKg[poolName];
+                            if (remaining <= 1e-6d) continue;
 
-                    if (!anyAllocation) break;
+                            double totalCompatThrust = 0d;
+                            for (int i = 0; i < runtimes.Length; i++)
+                            {
+                                var rt = runtimes[i];
+                                if (rt.Exhausted) continue;
+                                if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
+                                if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
+                                    continue;
+                                totalCompatThrust += rt.Entry.ThrustkN;
+                            }
+
+                            if (totalCompatThrust <= 1e-9d) continue;
+                            anyAllocation = true;
+                            for (int i = 0; i < runtimes.Length; i++)
+                            {
+                                var rt = runtimes[i];
+                                if (rt.Exhausted) continue;
+                                if (rt.Entry == null || rt.Entry.Role == EngineRole.Solid) continue;
+                                if (poolName != "__fallback_liquid__" && (rt.Entry.PropellantNames == null || !EngineUsesPropellant(rt.Entry.PropellantNames, poolName)))
+                                    continue;
+                                var share = rt.Entry.ThrustkN / totalCompatThrust;
+                                var add = remaining * share;
+                                rt.InitialPropKg += add;
+                                rt.PropRemainingKg += add;
+                            }
+                            poolByNameKg[poolName] = 0d;
+                        }
+
+                        if (!anyAllocation) break;
+                    }
                 }
 
                 for (int i = 0; i < runtimes.Length; i++)
@@ -951,6 +1034,13 @@ namespace OrbitalPayloadCalculator.Calculation
 
             var separationGroups = stage.SeparationGroups;
             var droppedGroups = new HashSet<int>();
+            var droppedPartIds = new HashSet<int>();
+            var partDryKgById = new Dictionary<int, double>();
+            if (stage.PartDryMassTonsById != null)
+            {
+                foreach (var kv in stage.PartDryMassTonsById)
+                    partDryKgById[kv.Key] = kv.Value * 1000d;
+            }
 
             for (double t = 0.0d; t < maxTime && massKg > dryMassKg; t += dt)
             {
@@ -1091,9 +1181,29 @@ namespace OrbitalPayloadCalculator.Calculation
                             }
                             if (allExhausted && grp.GroupDryMassTons > 0d)
                             {
-                                var dropKg = grp.GroupDryMassTons * 1000d;
-                                massKg -= dropKg;
-                                dryMassKg -= dropKg;
+                                double dropKg;
+                                if (grp.ReleasedPartIds != null && partDryKgById.Count > 0)
+                                {
+                                    dropKg = 0d;
+                                    foreach (var pid in grp.ReleasedPartIds)
+                                    {
+                                        if (droppedPartIds.Contains(pid)) continue;
+                                        if (partDryKgById.TryGetValue(pid, out var dm))
+                                        {
+                                            dropKg += dm;
+                                            droppedPartIds.Add(pid);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    dropKg = grp.GroupDryMassTons * 1000d;
+                                }
+                                if (dropKg > 0d)
+                                {
+                                    massKg -= dropKg;
+                                    dryMassKg -= dropKg;
+                                }
                                 droppedGroups.Add(gi);
                             }
                         }
@@ -1104,7 +1214,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (massKg < dryMassKg) massKg = dryMassKg;
             }
 
-            SimulateBottomStageDvCache[(keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBody)] = totalDv;
+            SimulateBottomStageDvCache[(keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBooster, keyBody)] = totalDv;
             return totalDv;
         }
 
