@@ -1,6 +1,6 @@
 # Orbital Payload Calculator 技术说明
 
-本文档整合 Orbital Payload Calculator 的核心技术说明，包括：估计值与可计算值、地表理想 Δv 模型、引擎分类与识别。
+本文档整合 Orbital Payload Calculator 的核心技术说明，包括：估计值与可计算值、地表理想 Delta-V 模型、引擎分类与识别。
 
 ---
 
@@ -14,18 +14,18 @@
 
 | 数据 | 计算方式 | 使用的天体属性 |
 |------|----------|----------------|
-| **地表理想 Δv** | 两模型按 $\alpha = a/r_0$、$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$ 自动选择。**模型 A**（α < 1.5 或 α ≤ 2 且 e < 0.1）：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。**模型 B**（其余）：霍曼 burn1+burn2，椭圆轨道 +burn3 | `gravParameter`、`Radius`、rPe、rAp |
+| **地表理想 Delta-V** | 两模型按 $\alpha = a/r_0$、$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$ 自动选择。**模型 A**（α < 1.5 或 α ≤ 2 且 e < 0.1）：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。**模型 B**（其余）：霍曼 burn1+burn2，椭圆轨道 +burn3 | `gravParameter`、`Radius`、rPe、rAp |
 | **轨道速度** | $v = \sqrt{\mu(2/r_{\mathrm{Pe}} - 1/a)}$ | `gravParameter`、`Radius`、轨道高度 |
-| **平面变轨 ΔV** | $2v \sin(\theta/2)$ | 轨道速度、发射纬度、目标倾角 |
+| **平面变轨 Delta-V** | $2v \sin(\theta/2)$ | 轨道速度、发射纬度、目标倾角 |
 | **自转增益/损失** | 赤道速度 + 纬度修正 | `rotationPeriod`、`Radius` |
-| **阶段 ΔV** | 齐奥尔科夫斯基公式 | 质量、推进剂、Isp |
+| **阶段 Delta-V** | 齐奥尔科夫斯基公式 | 质量、推进剂、Isp |
 | **大气 Isp 混合** | 底级时间步进模拟采样 `GetPressure(h)`，按瞬时压力插值 `engine.atmosphereCurve` | `atmosphereDepth`、`atmospherePressureSeaLevel` |
 | **仿真中重力损失** | 时间步进 $g = \mu/R^2$ | `gravParameter`、`Radius` |
 | **仿真中大气密度** | $\rho = p/(R_{\mathrm{air}} \cdot T)$ | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
 | **分离组（助推器干质量）** | 扫描 `maxPropStageNum-1` 至 0 所有阶段的分离器；发动机燃尽时抛离 | 部件层级、`inverseStage`、`ModuleDecouple` |
 
-### 地表理想 Δv 模型详情
+### 地表理想 Delta-V 模型详情
 
 两体、冲量式；忽略大气与重力损失。符号：$\mu$ = gravParameter，$r_0$ = 天体半径，$r_{\mathrm{Pe}}$/$r_{\mathrm{Ap}}$ = 近点/远点半径，$a = (r_{\mathrm{Pe}}+r_{\mathrm{Ap}})/2$，$\alpha = a/r_0$，$e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$。
 
@@ -35,11 +35,11 @@
 - **1.5 ≤ α ≤ 2.0**：若 e < 0.1 → 模型 A；若 e ≥ 0.1 → 模型 B
 - **α > 2.0** → 模型 B（霍曼结构）
 
-**模型 A：** 全局最小 Δv。椭圆：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。圆轨道：$r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$ 时同上。
+**模型 A：** 全局最小 Delta-V。椭圆：$\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$。圆轨道：$r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$ 时同上。
 
 **模型 B：** 分段点火。圆轨道 ($r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$)：$\mathrm{burn1} = \sqrt{\mu/r_0} \cdot \sqrt{2r/(r_0+r)}$，$\mathrm{burn2} = \sqrt{\mu/r} \cdot (1-\sqrt{2r_0/(r_0+r)})$。椭圆：在 $r_{\mathrm{Pe}}$ 处 burn1+burn2，远点处 burn3。两模型当 $r \to \infty$ 时收敛为 $\sqrt{2\mu/r_0}$（逃逸速度）。
 
-完整推导与公式见 [第二部分：地表→轨道理想 Δv 模型](#第二部分地表轨道理想-δv-模型)（见下文）。
+完整推导与公式见 [第二部分：地表→轨道理想 Delta-V 模型](#第二部分地表轨道理想-delta-v-模型)（见下文）。
 
 ## 1.2 估计值（启发式 / 经验公式）
 
@@ -77,13 +77,13 @@
 
 ## 1.5 简要总结
 
-- **可算的量**：地表理想 Δv（模型 A/B）、轨道速度、平面变轨、自转、阶段 ΔV、重力场、大气压强/温度/密度、大气混合 Isp。这些都由天体数据驱动，随天体不同自动变化。
+- **可算的量**：地表理想 Delta-V（模型 A/B）、轨道速度、平面变轨、自转、阶段 Delta-V、重力场、大气压强/温度/密度、大气混合 Isp。这些都由天体数据驱动，随天体不同自动变化。
 - **估计的量**：Cd 系数与 CdA、重力/大气/姿态损失（尤其是 Fallback 和姿态项）、启转速度和高度、转弯指数。这些依赖启发式或经验规则。
 - **编辑器和飞行模式**：CdA 使用相同启发式，不基于部件几何计算。
 
 ---
 
-# 第二部分：地表→轨道理想 Δv 模型
+# 第二部分：地表→轨道理想 Delta-V 模型
 
 两体、无大气、无重力损失。
 
@@ -127,23 +127,23 @@ $e$ = $(r_{\mathrm{Ap}} - r_{\mathrm{Pe}}) / (r_{\mathrm{Ap}} + r_{\mathrm{Pe}})
 **圆轨道：**
 
 $$
-\Delta v_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
+\text{Delta-V}_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
 $$
 
 **椭圆轨道：**
 
 $$
-\Delta v_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
+\text{Delta-V}_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
 $$
 
 ### 特性
 
-- 全局最小 Δv  
+- 全局最小 Delta-V  
 - 连续推力极限解  
 - 不假设霍曼结构  
 - 任意目标半径适用  
 
-当 $r \to \infty$ 时：$\Delta v_A \to \sqrt{2\mu/r_0}$（逃逸速度）
+当 $r \to \infty$ 时：$\text{Delta-V}_A \to \sqrt{2\mu/r_0}$（逃逸速度）
 
 ## 2.4 模型 B：霍曼结构模型（工程结构解）
 
@@ -161,7 +161,7 @@ $$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r} } \right)
 $$
 
-总 Δv：$\Delta v_B = \mathrm{burn1} + \mathrm{burn2}$
+总 Delta-V：$\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2}$
 
 ### 情况 2：目标为椭圆轨道 (rPe < rAp)
 
@@ -177,7 +177,7 @@ $$
 \mathrm{burn3} = \sqrt{ \frac{2\mu\,r_\mathrm{Ap}}{ r_\mathrm{Pe}(r_\mathrm{Pe} + r_\mathrm{Ap}) } } - \sqrt{ \frac{\mu}{r_\mathrm{Pe}} }
 $$
 
-总 Δv：$\Delta v_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
+总 Delta-V：$\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
 
 ### 特性
 
@@ -186,7 +186,7 @@ $$
 - 适用于远轨道  
 - 当 $r \gg r_0$ 或 $r_{\mathrm{Ap}} \gg r_{\mathrm{Pe}}$ 时与模型 A 收敛  
 
-当 $r \to \infty$ 时：$\Delta v_B \to \sqrt{2\mu/r_0}$
+当 $r \to \infty$ 时：$\text{Delta-V}_B \to \sqrt{2\mu/r_0}$
 
 ## 2.5 模型选择边界（任意天体通用）
 
@@ -199,7 +199,7 @@ $$
 特点：
 - 目标仍在引力井底部
 - 霍曼结构引入额外结构误差
-- 低轨椭圆可能略增加 Δv
+- 低轨椭圆可能略增加 Delta-V
 
 推荐：使用模型 A
 
@@ -209,7 +209,7 @@ $$
 
 特点：
 - 两模型差异快速衰减
-- 低偏心椭圆（e < 0.1）Δv 差异可忽略
+- 低偏心椭圆（e < 0.1）Delta-V 差异可忽略
 - 高偏心椭圆（e ≥ 0.1）建议用模型 B
 
 推荐：
@@ -256,7 +256,7 @@ $$
 - 能量极限
 - 数学最优
 - 适合作为理论下界
-- 一次 Δv 注入即可，不关心机动结构
+- 一次 Delta-V 注入即可，不关心机动结构
 
 **模型 B：**
 - 工程结构
@@ -273,15 +273,7 @@ $$
 
 本文档描述 OrbitalPayloadCalculator 中引擎类型的自动识别规则、玩家反馈机制，以及各类引擎在 dV 计算和燃料分配中的处理方式，用以适配原版、RO 及多燃料引擎等。
 
-## 3.1 背景与问题
-
-当前代码仅区分固推（IsSolid）与液推，未识别反推、沉底、逃逸塔、电推等类型，导致：
-
-- **液推燃料被分配给反推**：反推与液推按推力比例瓜分液体燃料，造成可用 dV 估算错误
-- **推力详情错误**：反推等引擎的推力被错误计入总推力或展示中
-- **不应参与计算的引擎被计入**：反推、沉底、逃逸塔等不应贡献 dV，却参与了计算
-
-## 3.2 引擎角色定义
+## 3.1 引擎角色定义
 
 | 角色 | 说明 | 参与 dV | 分配燃料 | 计入质量/阻力 |
 |------|------|---------|----------|---------------|
@@ -294,7 +286,7 @@ $$
 
 不参与 dV、不分配燃料的引擎（Retro/Settling/EscapeTower），其质量与阻力仍需计入，否则整体估算会偏差。参与分配的引擎按 propellants 只分配其列出的推进剂。
 
-## 3.3 反推引擎识别
+## 3.2 反推引擎识别
 
 ### 原理
 
@@ -318,7 +310,7 @@ $$
 1. 确定底级主推方向：在**尚未被标为 Electric、EscapeTower、Settling** 的引擎中，取 StageNumber 最大（最底级）且推力最大的**单台**引擎，以其推力方向作为参考方向
 2. 对每个引擎：若其推力方向与底级主推方向的点积 < 0.8（夹角 > 约 37°，含反向与侧向），则判为 **Retro**
 
-## 3.4 电推引擎识别
+## 3.3 电推引擎识别
 
 **只要 propellants 中包含 ElectricCharge，即视为电推引擎。**
 
@@ -329,7 +321,7 @@ $$
 电推使用常规火箭方程，公式相同：
 
 $$
-\Delta v = I_{\mathrm{sp}} \cdot g_0 \cdot \ln(m_{\mathrm{wet}} / m_{\mathrm{dry}})
+\text{Delta-V} = I_{\mathrm{sp}} \cdot g_0 \cdot \ln(m_{\mathrm{wet}} / m_{\mathrm{dry}})
 $$
 
 区别在于：
@@ -343,11 +335,11 @@ $$
 - 参与燃料分配：按 propellants 分配其所需推进剂（电推分 ElectricCharge/氙等，液推分液氧等），propellants 没有的绝不分配
 - 无需单独的“电推分支”
 
-## 3.5 吸气式引擎
+## 3.4 吸气式引擎
 
 **暂不做特殊处理**，保持现有逻辑。吸气式推进剂（如 IntakeAir）不在储箱中，当前实现本身就不完整，留待后续迭代。
 
-## 3.6 沉底引擎识别
+## 3.5 沉底引擎识别
 
 - **推力**：$\max\mathrm{Thrust} < 1\%$ 全箭最大推力（且至少 0.1 kN），即 $\mathrm{Thrust}_{\mathrm{kN}} < \max(0.1,\, 0.01 \times \max\mathrm{Thrust}_{\mathrm{kN}})$
 - **燃料**：自身携带燃料（Part 的 Resources 中含该引擎 propellants 所需的推进剂），排除电推。不限定具体资源名，以兼容 RO 等 mod 的不同燃料类型
@@ -355,13 +347,13 @@ $$
 
 满足以上条件 → `EngineRole = Settling`。
 
-## 3.7 逃逸塔识别
+## 3.6 逃逸塔识别
 
 1. **是否自带燃料**：Part 自身 Resources 中含该引擎 propellants 所需推进剂（不限定 SolidFuel，兼容 RO）
 2. **是否绑定 Abort 动作组**：遍历 `engine.Actions`，检查 `(action.actionGroup & KSPActionGroup.Abort) != 0`
 3. **判定**：自带燃料 + 绑定 Abort → `EscapeTower`；自带燃料 + 未绑定 Abort → 固推（Solid）
 
-## 3.8 识别流程顺序
+## 3.7 识别流程顺序
 
 为避免串扰、保证液推方向计算正确，须按以下顺序判定：
 
@@ -374,7 +366,7 @@ $$
 | 5 | **Solid** | 自带燃料 + 非 EscapeTower + 非 Settling | 前四步完成后，「剩余自带燃料」判为固推（含 RO） |
 | 6 | **Main** | 其余 | 从储箱获取燃料的液推 |
 
-## 3.9 玩家反馈与手动覆盖
+## 3.8 玩家反馈与手动覆盖
 
 ### 设计思路
 
@@ -396,7 +388,7 @@ Retro、Settling、EscapeTower 三类：
 
 **燃料分配逻辑**：参与分配的引擎按各自的 propellants 读取所需资源，只分配其列出的推进剂。
 
-## 3.10 部件排除（质量计算）
+## 3.9 部件排除（质量计算）
 
 以下部件**不参与**任何质量、燃料、dV 计算，在 `VesselSourceService.BuildStatsFromParts` 等流程中通过 `IsExcludedFromCalculation` 过滤：
 
@@ -408,7 +400,7 @@ Retro、Settling、EscapeTower 三类：
 
 排除后，这些部件的质量、燃料、引擎均不会被计入统计数据。
 
-## 3.11 当前实现状态（2026-02）
+## 3.10 当前实现状态（2026-02）
 
 **引擎分类：**
 

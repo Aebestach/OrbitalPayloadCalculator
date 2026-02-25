@@ -1,6 +1,6 @@
 # Orbital Payload Calculator Technical Description
 
-This document consolidates the core technical specifications of Orbital Payload Calculator, including: estimated vs calculated data, surface-to-orbit ideal Δv models, and engine classification and identification.
+This document consolidates the core technical specifications of Orbital Payload Calculator, including: estimated vs calculated data, surface-to-orbit ideal Delta-V models, and engine classification and identification.
 
 ---
 
@@ -14,18 +14,18 @@ These values are derived from orbital mechanics and the celestial body's physica
 
 | Data | Formula / Method | Body Properties Used |
 |------|-----------------|----------------------|
-| **Ideal Δv from Surface** | Two models, auto-selected by $\alpha = a/r_0$ and $e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$. **Model A (α < 1.5 or α ≤ 2 & e < 0.1):** $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. **Model B (else):** Hohmann burn1+burn2, or +burn3 for elliptical | `gravParameter`, `Radius`, rPe, rAp |
+| **Ideal Delta-V from Surface** | Two models, auto-selected by $\alpha = a/r_0$ and $e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$. **Model A (α < 1.5 or α ≤ 2 & e < 0.1):** $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. **Model B (else):** Hohmann burn1+burn2, or +burn3 for elliptical | `gravParameter`, `Radius`, rPe, rAp |
 | **Orbital Speed** | $v = \sqrt{\mu(2/r_{\mathrm{Pe}} - 1/a)}$ | `gravParameter`, `Radius`, orbit altitudes |
-| **Plane Change ΔV** | $2v \sin(\theta/2)$ | Orbital speed, launch latitude, target inclination |
+| **Plane Change Delta-V** | $2v \sin(\theta/2)$ | Orbital speed, launch latitude, target inclination |
 | **Rotation Bonus/Loss** | Equatorial speed + latitude correction | `rotationPeriod`, `Radius` |
-| **Stage ΔV** | Tsiolkovsky rocket equation | Mass, propellant, Isp |
+| **Stage Delta-V** | Tsiolkovsky rocket equation | Mass, propellant, Isp |
 | **Atmospheric ISP Blend** | Bottom-stage time-stepped simulation samples `GetPressure(h)`; Isp interpolated from `engine.atmosphereCurve` by instantaneous pressure | `atmosphereDepth`, `atmospherePressureSeaLevel` |
 | **Gravity Loss (in simulation)** | Time-stepped $g = \mu/R^2$ per step | `gravParameter`, `Radius` |
 | **Atmospheric Density (in simulation)** | $\rho = p/(R_{\mathrm{air}} \cdot T)$ | `GetPressure(h)`, `GetTemperature(h)` |
 | **Default Orbit Altitude** | Atmosphere top + 10,000 m | `atmosphereDepth` |
 | **Separation Groups (booster dry mass)** | Decoupler scan over all stages `maxPropStageNum-1` … 0; drop when engines exhaust | Part hierarchy, `inverseStage`, `ModuleDecouple` |
 
-### Ideal Δv Model Detail (Surface → Orbit)
+### Ideal Delta-V Model Detail (Surface → Orbit)
 
 Two-body, impulsive; no atmosphere, no gravity loss. Symbols: $\mu$ = gravParameter, $r_0$ = body radius, $r_{\mathrm{Pe}}$/$r_{\mathrm{Ap}}$ = periapsis/apocentre, $a = (r_{\mathrm{Pe}}+r_{\mathrm{Ap}})/2$, $\alpha = a/r_0$, $e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$.
 
@@ -35,11 +35,11 @@ Two-body, impulsive; no atmosphere, no gravity loss. Symbols: $\mu$ = gravParame
 - **1.5 ≤ α ≤ 2.0**: if e < 0.1 → Model A; if e ≥ 0.1 → Model B
 - **α > 2.0** → Model B (Hohmann structure)
 
-**Model A:** Global minimum Δv. Elliptical: $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. Circular: same with $r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$.
+**Model A:** Global minimum Delta-V. Elliptical: $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. Circular: same with $r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$.
 
 **Model B:** Structured burns. Circular ($r_{\mathrm{Pe}}=r_{\mathrm{Ap}}=r$): $\mathrm{burn1} = \sqrt{\mu/r_0} \cdot \sqrt{2r/(r_0+r)}$, $\mathrm{burn2} = \sqrt{\mu/r} \cdot (1-\sqrt{2r_0/(r_0+r)})$. Elliptical: burn1+burn2 at $r_{\mathrm{Pe}}$, then burn3 at apoapsis. Both models converge to $\sqrt{2\mu/r_0}$ (escape speed) as $r \to \infty$.
 
-See [Part 2: Surface → Orbit Ideal Δv Models](#part-2-surface--orbit-ideal-v-models) for full derivation and formulas.
+See [Part 2: Surface → Orbit Ideal Delta-V Models](#part-2-surface--orbit-ideal-delta-v-models) for full derivation and formulas.
 
 ## 1.2 Estimated Values (Heuristics / Empirical Formulas)
 
@@ -77,13 +77,13 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 
 ## 1.5 Summary
 
-- **Calculated:** Ideal Δv from surface (Model A/B), orbital speed, plane change ΔV, rotation bonus, stage ΔV, gravity field, atmospheric pressure/temperature/density, atmosphere-blended Isp. All driven by body data and change per celestial body.
+- **Calculated:** Ideal Delta-V from surface (Model A/B), orbital speed, plane change Delta-V, rotation bonus, stage Delta-V, gravity field, atmospheric pressure/temperature/density, atmosphere-blended Isp. All driven by body data and change per celestial body.
 - **Estimated:** Cd coefficient and CdA, gravity/atmospheric/attitude losses (especially in fallback and attitude terms), turn start speed/altitude, turn exponent. These rely on heuristics or empirical rules.
 - **Editor & Flight:** CdA uses the same heuristic; no geometry-based CdA.
 
 ---
 
-# Part 2: Surface → Orbit Ideal Δv Models
+# Part 2: Surface → Orbit Ideal Delta-V Models
 
 Two-body, no atmosphere, no gravity loss.
 
@@ -127,23 +127,23 @@ From $\frac{1}{2}v^2 = \Delta E$:
 **Circular Orbit**
 
 $$
-\Delta v_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
+\text{Delta-V}_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{2r} \right) }
 $$
 
 **Elliptic Orbit**
 
 $$
-\Delta v_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
+\text{Delta-V}_A = \sqrt{ 2\mu \left( \frac{1}{r_0} - \frac{1}{r_\mathrm{Pe} + r_\mathrm{Ap}} \right) }
 $$
 
 ### Properties
 
-- Global minimum Δv  
+- Global minimum Delta-V  
 - Continuous-thrust limit solution  
 - No Hohmann assumption  
 - Valid for any target radius  
 
-As $r \to \infty$: $\Delta v_A \to \sqrt{2\mu/r_0}$ (escape speed)
+As $r \to \infty$: $\text{Delta-V}_A \to \sqrt{2\mu/r_0}$ (escape speed)
 
 ## 2.4 Model B: Hohmann-Structured (Engineering Solution)
 
@@ -161,7 +161,7 @@ $$
 \mathrm{burn2} = \sqrt{\frac{\mu}{r}} \cdot \left( 1 - \sqrt{ \frac{2r_0}{r_0 + r} } \right)
 $$
 
-Total: $\Delta v_B = \mathrm{burn1} + \mathrm{burn2}$
+Total: $\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2}$
 
 ### Case 2: Elliptic Target (rPe < rAp)
 
@@ -177,7 +177,7 @@ $$
 \mathrm{burn3} = \sqrt{ \frac{2\mu\,r_\mathrm{Ap}}{ r_\mathrm{Pe}(r_\mathrm{Pe} + r_\mathrm{Ap}) } } - \sqrt{ \frac{\mu}{r_\mathrm{Pe}} }
 $$
 
-Total: $\Delta v_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
+Total: $\text{Delta-V}_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
 
 ### Properties
 
@@ -186,7 +186,7 @@ Total: $\Delta v_B = \mathrm{burn1} + \mathrm{burn2} + \mathrm{burn3}$
 - Suitable for distant orbits  
 - Converges to Model A when $r \gg r_0$ or $r_{\mathrm{Ap}} \gg r_{\mathrm{Pe}}$  
 
-As $r \to \infty$: $\Delta v_B \to \sqrt{2\mu/r_0}$
+As $r \to \infty$: $\text{Delta-V}_B \to \sqrt{2\mu/r_0}$
 
 ## 2.5 Model Selection Boundaries (Any Celestial Body)
 
@@ -199,7 +199,7 @@ Define: $\alpha = a/r_0$ ($a$ = semi-major axis), $e = (r_{\mathrm{Ap}}-r_{\math
 Characteristics:
 - Target near bottom of gravity well
 - Hohmann structure adds structural error
-- Low-eccentricity ellipse may slightly increase Δv
+- Low-eccentricity ellipse may slightly increase Delta-V
 
 Recommendation: Use Model A
 
@@ -209,7 +209,7 @@ Recommendation: Use Model A
 
 Characteristics:
 - Difference between models decays quickly
-- Low eccentricity (e < 0.1): negligible Δv difference
+- Low eccentricity (e < 0.1): negligible Delta-V difference
 - High eccentricity (e ≥ 0.1): prefer Model B
 
 Recommendation:
@@ -256,7 +256,7 @@ else:  # α > 2.0
 - Energy limit
 - Mathematically optimal
 - Best as theoretical lower bound
-- Single Δv injection; no concern for maneuver structure
+- Single Delta-V injection; no concern for maneuver structure
 
 **Model B:**
 - Engineering structure
@@ -273,15 +273,7 @@ Both converge to $\sqrt{2\mu/r_0}$ (escape speed) as $r \to \infty$ or for high 
 
 This section describes the automatic identification rules for engine types in OrbitalPayloadCalculator, the player feedback mechanism, and how each engine type is handled in dV calculation and fuel allocation. Designed to support stock KSP, RO (Realism Overhaul), and multi-fuel engines.
 
-## 3.1 Background and Problem
-
-The previous implementation only distinguished solid (IsSolid) from liquid propulsion, without recognizing retro, settling, escape tower, electric, etc., which caused:
-
-- **Liquid fuel assigned to retro engines**: Retro and liquid engines shared liquid fuel by thrust ratio, causing incorrect available dV estimates
-- **Incorrect thrust details**: Retro engine thrust was incorrectly included in total thrust display
-- **Engines that should not participate in calculations were included**: Retro, settling, escape tower should not contribute dV, yet they were counted
-
-## 3.2 Engine Role Definitions
+## 3.1 Engine Role Definitions
 
 | Role | Description | Participates in dV | Assigned Fuel | Mass/Drag Counted |
 |------|-------------|-------------------|---------------|------------------|
@@ -294,7 +286,7 @@ The previous implementation only distinguished solid (IsSolid) from liquid propu
 
 Engines that do not participate in dV or fuel allocation (Retro/Settling/EscapeTower) still have their mass and drag counted; otherwise the overall estimate would be biased. Participating engines receive only the propellants listed in their propellants.
 
-## 3.3 Retro Engine Identification
+## 3.2 Retro Engine Identification
 
 ### Principle
 
@@ -318,7 +310,7 @@ Conclusion: **Thrust direction can be correctly identified in both editor and fl
 1. Determine bottom-stage main thrust direction: among engines **not yet labeled Electric, EscapeTower, or Settling**, take the single engine with the largest StageNumber (bottom stage) and highest thrust; use its thrust direction as reference
 2. For each engine: if its thrust direction dot product with bottom-stage main thrust < 0.8 (angle > ~37°, including reverse and lateral), label as **Retro**
 
-## 3.4 Electric Engine Identification
+## 3.3 Electric Engine Identification
 
 **Any engine whose propellants include ElectricCharge is classified as electric.**
 
@@ -329,7 +321,7 @@ Example: `engine.propellants` contains any `prop.name == "ElectricCharge"` → `
 Electric propulsion uses the standard rocket equation, same formula:
 
 $$
-\Delta v = I_{\mathrm{sp}} \cdot g_0 \cdot \ln(m_{\mathrm{wet}} / m_{\mathrm{dry}})
+\text{Delta-V} = I_{\mathrm{sp}} \cdot g_0 \cdot \ln(m_{\mathrm{wet}} / m_{\mathrm{dry}})
 $$
 
 The difference:
@@ -343,11 +335,11 @@ The difference:
 - Participates in fuel allocation: assign propellants per propellants list (electric gets ElectricCharge/xenon etc., liquid gets LOx etc.); never assign what is not in propellants
 - No separate "electric branch" needed
 
-## 3.5 Air-Breathing Engines
+## 3.4 Air-Breathing Engines
 
 **No special handling for now**; keep existing logic. Air-breathing propellants (e.g., IntakeAir) are not in tanks; the current implementation is incomplete and deferred to a future iteration.
 
-## 3.6 Settling Engine Identification
+## 3.5 Settling Engine Identification
 
 - **Thrust**: $\max\mathrm{Thrust} < 1\%$ of vehicle max thrust (and at least 0.1 kN), i.e. $\mathrm{Thrust}_{\mathrm{kN}} < \max(0.1,\, 0.01 \times \max\mathrm{Thrust}_{\mathrm{kN}})$
 - **Fuel**: Self-contained (Part's Resources contain propellants required by the engine), exclude electric. No fixed resource names for compatibility with RO and other mods
@@ -355,13 +347,13 @@ The difference:
 
 All above → `EngineRole = Settling`.
 
-## 3.7 Escape Tower Identification
+## 3.6 Escape Tower Identification
 
 1. **Self-contained fuel**: Part's own Resources contain propellants required by the engine (not limited to SolidFuel, compatible with RO)
 2. **Bound to Abort action group**: Iterate `engine.Actions`, check `(action.actionGroup & KSPActionGroup.Abort) != 0`
 3. **Verdict**: Self-contained + bound to Abort → `EscapeTower`; Self-contained + not bound to Abort → Solid
 
-## 3.8 Identification Flow Order
+## 3.7 Identification Flow Order
 
 To avoid interference and ensure correct liquid thrust direction calculation, identification must follow this order:
 
@@ -374,7 +366,7 @@ To avoid interference and ensure correct liquid thrust direction calculation, id
 | 5 | **Solid** | Self-contained + not EscapeTower + not Settling | After step 4, remaining self-contained → Solid (incl. RO) |
 | 6 | **Main** | All others | Liquid from tanks |
 
-## 3.9 Player Feedback and Manual Override
+## 3.8 Player Feedback and Manual Override
 
 ### Design
 
@@ -396,7 +388,7 @@ Retro, Settling, EscapeTower:
 
 **Fuel allocation logic**: Participating engines read required resources from their propellants and assign only those listed.
 
-## 3.10 Part Exclusion (Mass Calculation)
+## 3.9 Part Exclusion (Mass Calculation)
 
 The following parts **do not participate** in any mass, fuel, or dV calculation; filtered via `IsExcludedFromCalculation` in `VesselSourceService.BuildStatsFromParts` and related flows:
 
@@ -408,7 +400,7 @@ The following parts **do not participate** in any mass, fuel, or dV calculation;
 
 Excluded parts' mass, fuel, and engines are not included in statistics.
 
-## 3.11 Current Implementation Status (2026-02)
+## 3.10 Current Implementation Status (2026-02)
 
 **Engine classification:**
 

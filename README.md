@@ -43,8 +43,8 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 -   **Advanced Loss Modeling:** Ascent simulation based on actual atmospheric curves; Pessimistic / Normal / Optimistic modes; Advanced parameter overrides.
 -   **Multi-Body & Rotation:** Supports any celestial body and launch latitude; accounts for prograde/retrograde launch.
 -   **Staged Analysis:** Multi-stage support; automatic engine role classification (Main / Solid / Electric / Retro / Settling / EscapeTower); separation group detection; manual engine role overrides.
--   **Configurable Targets:** Apoapsis, periapsis, inclination, launch latitude; units m / km / Mm; automatic plane change Δv.
--   **Ideal Δv Model:** Surface-to-orbit ideal Δv (two-body, impulsive); auto-selection between energy-optimal and Hohmann models by orbit parameters.
+-   **Configurable Targets:** Apoapsis, periapsis, inclination, launch latitude; units m / km / Mm; automatic plane change Delta-V.
+-   **Ideal Delta-V Model:** Surface-to-orbit ideal Delta-V (two-body, impulsive); auto-selection between energy-optimal and Hohmann models by orbit parameters.
 
 **Technical implementation details** → [Technical Description](Technical%20Description_EN.md).
 
@@ -87,7 +87,7 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 -   **Vessel block** (top): Vessel name, wet mass, dry mass.
 -   **Orbit block:** Launch body, apoapsis, periapsis, inclination, eccentricity.
 -   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
--   **Required Delta-V:** Total Delta-V needed to reach orbit (Ideal Δv + Losses + Plane Change ± Rotation Assist). Ideal Δv is the theoretical minimum from surface to target orbit; see **Delta-V Details** for breakdown.
+-   **Required Delta-V:** Total Delta-V needed to reach orbit (Ideal Delta-V + Losses + Plane Change ± Rotation Assist). Ideal Delta-V is the theoretical minimum from surface to target orbit; see **Delta-V Details** for breakdown.
 -   **Available Delta-V:** Your vessel's total Delta-V. In Flight, the **Delta-V Details** popup also shows ground altitude above this.
 -   **Loss Breakdown:** Shows how much Delta-V is lost to Gravity, Drag, and Steering (Attitude).
 
