@@ -3,7 +3,7 @@
 
 <div align="center">
     
-<img src="https://imgur.com/ryDQSmm.jpg" alt="Banner"/>
+<img src="https://i.imgur.com/ryDQSmm.jpg" alt="Banner"/>
 
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
@@ -34,7 +34,7 @@
 
 
 <div align="center">
-    <img src="https://imgur.com/w5oGoM5.jpg" alt="UI Screenshot"/>
+    <img src="https://i.imgur.com/vLPrqJE.png" alt="UI Screenshot"/>
 </div>
 
 
@@ -81,16 +81,8 @@
     -   **高级设置：** 任意情况下可展开，可设置转弯速度、阻力系数 (Cd，建议范围 0.3–2.0)、重力转弯高度及重力/大气/姿态损失覆盖；**高级参数优先级高于悲观/普通/乐观估算**。
     -   **货舱当作整流罩：** 开启时，货舱质量在其分离阶段按整流罩排除；若入轨后仍保留货舱，请关闭。
     -   **姿态损失参考：** 优秀轨迹 10–30 m/s，一般轨迹 30–80 m/s，粗暴转弯 100–300 m/s。
-5.  **引擎分类：** 在分级详情中可点击 **引擎分类** 按钮，逐引擎切换角色类型（主推进 / 固推 / 电推 / 反推 / 沉底 / 逃逸塔），覆盖结果会持久化保存。
+5.  **引擎分类：** 在分级详情中可点击 **引擎分类** 按钮，逐引擎覆盖角色（如将反推标为参与计算等），覆盖结果会持久化保存。
 6.  **开始计算：** 点击 **开始计算** 按钮。
-
-### 结果解读
--   **载具块 (Vessel)：** 载具名称、湿质量、干质量。
--   **轨道块 (Orbit)：** 起飞天体、远点、近点、倾角、偏心率。
--   **估算载荷 (Estimated Payload)：** 火箭在当前基础上还能额外携带的最大吨位。
--   **需求 Delta-V (Required Delta-V)：** 入轨所需估算的总 Delta-V（理想 Delta-V + 损失 + 平面变更 ± 自转损失/助力）。理想 Delta-V 为地表到目标轨道的理论最小值；详见 **Delta-V 详情** 中的分解。
--   **可用 Delta-V (Available Delta-V)：** 载具当前估算的总 Delta-V。飞行场景下，**Delta-V 详情** 弹窗中会在此上方显示地面高度。
--   **损失分解 (Loss Breakdown)：** 估算重力、阻力和姿态控制分别消耗了多少 Delta-V。
 
 ### 载荷计算方式
 
@@ -100,16 +92,12 @@
 -   **纯火箭法 (Pure Rocket)：**
    将载荷放在一侧（不影响火箭计算），直接计算火箭自身的 Delta-V，从而直接得到运输能力。
 
-<div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
-  <div style="text-align: center;">
-    <img src="https://i.imgur.com/gFr2pXb.jpg" alt="融合载荷法" width="1000"/>
-    <p align="center">融合载荷法</p>
-  </div>
-  <div style="text-align: center;">
-    <img src="https://i.imgur.com/lf9kt8u.jpg" alt="纯火箭法" width="1000"/>
-    <p align="center">纯火箭法</p>
-  </div>
-</div>
+<p align="center">
+  <img src="https://i.imgur.com/ZbtSU3o.jpg" alt="融合载荷法" width="1000"/><br/>融合载荷法
+</p>
+<p align="center">
+  <img src="https://i.imgur.com/IhsxXNS.jpg" alt="纯火箭法" width="1000"/><br/>纯火箭法
+</p>
 
 ## 注意事项
 

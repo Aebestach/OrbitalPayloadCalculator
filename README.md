@@ -2,7 +2,7 @@
 
 <div align="center">
     
-<img src="https://imgur.com/ryDQSmm.jpg" alt="Banner"/>
+<img src="https://i.imgur.com/ryDQSmm.jpg" alt="Banner"/>
     
 [![License](https://img.shields.io/github/license/Aebestach/OrbitalPayloadCalculator)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalPayloadCalculator)](https://github.com/Aebestach/OrbitalPayloadCalculator/releases)
@@ -33,7 +33,7 @@ From now on, your rockets won't be ***almost there*** or ***overflowing with fue
 It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that are Landed or PreLaunch).
 
 <div align="center">
-    <img src="https://imgur.com/w5oGoM5.jpg" alt="UI Screenshot"/>
+    <img src="https://i.imgur.com/vLPrqJE.jpg" alt="UI Screenshot"/>
 </div>
 
 
@@ -83,14 +83,6 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 5.  **Engine Classification:** In the stage breakdown, click **Engine Classification** to switch each engine's role (Main / Solid / Electric / Retro / Settling / Escape Tower (LES)); overrides are persisted.
 6.  **Calculate:** Click the **Calculate** button.
 
-### Results Explained
--   **Vessel block** (top): Vessel name, wet mass, dry mass.
--   **Orbit block:** Launch body, apoapsis, periapsis, inclination, eccentricity.
--   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
--   **Required Delta-V:** Total Delta-V needed to reach orbit (Ideal Delta-V + Losses + Plane Change ± Rotation Assist). Ideal Delta-V is the theoretical minimum from surface to target orbit; see **Delta-V Details** for breakdown.
--   **Available Delta-V:** Your vessel's total Delta-V. In Flight, the **Delta-V Details** popup also shows ground altitude above this.
--   **Loss Breakdown:** Shows how much Delta-V is lost to Gravity, Drag, and Steering (Attitude).
-
 ### Payload Calculation Methods
 
 -   **Incorporate Payload:**
@@ -99,16 +91,12 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 -   **Pure Rocket:**
    Sets the payload aside (does not affect rocket calculation) and calculates the rocket's own Delta-V directly to determine transport capacity.
 
-<div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
-  <div style="text-align: center;">
-    <img src="https://i.imgur.com/gFr2pXb.jpg" alt="Incorporate Payload" width="1000"/>
-    <p align="center">Incorporate Payload</p>
-  </div>
-  <div style="text-align: center;">
-    <img src="https://i.imgur.com/lf9kt8u.jpg" alt="Pure Rocket" width="1000"/>
-    <p align="center">Pure Rocket</p>
-  </div>
-</div>
+<p align="center">
+  <img src="https://i.imgur.com/ZbtSU3o.jpg" alt="Incorporate Payload" width="1000"/><br/>Incorporate Payload
+</p>
+<p align="center">
+  <img src="https://i.imgur.com/IhsxXNS.jpg" alt="Pure Rocket" width="1000"/><br/>Pure Rocket
+</p>
 
 ## Notes
 
