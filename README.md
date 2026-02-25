@@ -80,7 +80,7 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
     -   **Advanced Settings:** Expandable anytime. Set turn speed, Cd coefficient (range 0.3–2.0), turn altitude, and gravity/atmosphere/attitude overrides; **Advanced parameters override Pessimistic/Normal/Optimistic**.
     -   **Treat cargo bay as fairing:** When enabled, cargo bay mass is excluded at its jettison stage; disable if the cargo bay stays on for orbit.
     -   **Attitude loss reference:** Excellent trajectory 10–30 m/s, average 30–80 m/s, aggressive turn 100–300 m/s.
-5.  **Engine Classification:** In the stage breakdown, click **Engine Classification** to override engine roles per part (e.g., mark retro as participating); overrides are persisted.
+5.  **Engine Classification:** In the stage breakdown, click **Engine Classification** to switch each engine's role (Main / Solid / Electric / Retro / Settling / Escape Tower (LES)); overrides are persisted.
 6.  **Calculate:** Click the **Calculate** button.
 
 ### Results Explained
