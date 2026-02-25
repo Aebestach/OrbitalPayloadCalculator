@@ -854,21 +854,24 @@ namespace OrbitalPayloadCalculator.Services
                 || part.Modules.Contains("ModuleLaunchClamp");
         }
 
-        /// <summary>Excludes parts that should not participate in any calculation: stock launch clamps and AlphaMensaes Modular Launch Pads.</summary>
+        /// <summary>Excludes parts that should not participate in any calculation: launch clamps, launch pads (MLP, AASA, etc.).</summary>
         private static bool IsExcludedFromCalculation(Part part)
         {
             if (part == null) return true;
             if (IsLaunchClamp(part)) return true;
             var manufacturer = part.partInfo?.manufacturer ?? "";
             var partName = part.partInfo?.name ?? part.name ?? "";
+            // Modular Launch Pads (Alphadyne)
             if (manufacturer.IndexOf("Alphadyne", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
-            // Modular Launch Pads: AM_MLP_* (main), MountPlatform_MLP (suffix), legacy AM.MLP
             if (partName.IndexOf("AM.MLP", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
             if (partName.IndexOf("AM_MLP", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
             if (partName.IndexOf("_MLP", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            // Andromeda AeroSpace Agency launch pad (aasa.ag.launch.pad) and similar
+            if (partName.IndexOf("launch.pad", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
             return false;
         }

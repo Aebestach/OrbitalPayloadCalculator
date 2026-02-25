@@ -13,13 +13,13 @@
 
 ---
 
-## 📖 Introduction
+## Introduction
 
 In Kerbal Space Program (KSP), designing rockets is often less ***engineering*** and more ***alchemy*** — slapping on fuel tanks, guessing stage counts, praying it doesn't explode at launch, and only realizing after orbit insertion that:
 
-*   Either you have too little Delta-V, missing the Mun by a hair and watching your Kerbals cry;
-*   Or you have absurdly too much Delta-V, arriving at the Mun with enough fuel to tour the solar system;
-*   Most awkwardly, you finally reach orbit only to find the payload feels like a lead block, watching the fuel gauge drop bar by bar along with your heart.
+-   Either you have too little Delta-V, missing the Mun by a hair and watching your Kerbals cry;
+-   Or you have absurdly too much Delta-V, arriving at the Mun with enough fuel to tour the solar system;
+-   Most awkwardly, you finally reach orbit only to find the payload feels like a lead block, watching the fuel gauge drop bar by bar along with your heart.
 
 Surprisingly, despite KSP being a decade old, few tools have specifically addressed this problem. As a rocket designer myself, I've felt the pain: constantly checking Delta-V charts and calculating payloads is brain-draining and error-prone. These needs and ***pain points*** led to the birth of **Orbital Payload Calculator**.
 
@@ -37,76 +37,66 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 </div>
 
 
-## ✨ Features
+## Features
 
-*   **🚀 Payload Estimation**
-    *   Calculates the maximum payload (in tons) capable of reaching your target orbit.
-    *   Iteratively solves for the payload mass that matches your rocket's available Delta-V against the required Delta-V.
-*   **📉 Advanced Loss Modeling**
-    *   **Simulation-based:** Runs a time-stepped ascent simulation using the celestial body's actual atmospheric pressure and temperature curves.
-    *   **Gravity & Drag:** Automatically estimates gravity losses and atmospheric drag based on vessel TWR and aerodynamics. CdA uses the same heuristic (Cd × √mass) in both Editor and Flight; user Cd or default 0.50/1.0/1.5 (Optimistic/Normal/Pessimistic).
-    *   **Estimate Modes:** Mutually exclusive **Pessimistic**, **Normal**, and **Optimistic** modes; Advanced Settings parameters always override all. **Optimistic** uses Cd 0.50 and aggressive turn exponent (0.40/0.45) for earlier pitch-over; **Pessimistic** uses Cd 1.5 and gentler turn (0.65/0.80) for conservative estimates.
-*   **🌍 Multi-Body & Rotation**
-    *   Supports any celestial body (Kerbin, Eve, Duna, modded planets, etc.).
-    *   Accounts for planetary rotation (launching East vs. West) and launch latitude.
-*   **🔄 Staged Analysis**
-    *   Properly handles multi-stage vessels.
-    *   Blends Vacuum and Sea-Level ISP for atmospheric stages based on pressure.
-    *   **Engine Role Classification:** Automatically classifies engines into Main / Solid / Electric / Retro / Settling / Escape Tower. Only Main/Solid/Electric contribute to Delta-V and fuel allocation; non-participating engines still keep mass/drag impact.
-    *   **Separation Groups:** Detects decouplers in *all* stages after the bottom stage, so multi-pair boosters (SRBs or liquid) that separate at different times are correctly modeled. Each booster pair's dry mass is subtracted when its engines exhaust.
-    *   View detailed breakdown per stage: Mass, Thrust, ISP, TWR, and Delta-V.
-*   **🛠️ Configurable Targets**
-    *   Set Target Apoapsis (Ap), Periapsis (Pe), Inclination, and Launch Latitude.
-    *   Supports units: `m`, `km`, `Mm`.
-    *   Automatically calculates Plane Change Delta-V if the target inclination is lower than the launch latitude.
-*   **📐 Ideal Δv Model (Surface → Orbit)**
-    *   Two-body, impulsive; ignores atmosphere and gravity loss.
-    *   **Model A (energy-optimal):** Global minimum Δv; used for low orbits (α < 1.5) and low-eccentricity intermediate orbits.
-    *   **Model B (Hohmann):** Structured burn sequence (burn1→burn2, or +burn3 for elliptical); used for high orbits (α > 2.0) and high-eccentricity intermediate orbits.
-    *   Automatic selection by semi-major-axis ratio α = a/r₀ and eccentricity e; see [DATA_SOURCES](DATA_SOURCES.md).
+-   **Payload Estimation:** Calculates the maximum payload (tons) to your target orbit; iteratively matches available Delta-V against required Delta-V.
+-   **Advanced Loss Modeling:** Ascent simulation based on actual atmospheric curves; Pessimistic / Normal / Optimistic modes; Advanced parameter overrides.
+-   **Multi-Body & Rotation:** Supports any celestial body and launch latitude; accounts for prograde/retrograde launch.
+-   **Staged Analysis:** Multi-stage support; automatic engine role classification (Main / Solid / Electric / Retro / Settling / EscapeTower); separation group detection; manual engine role overrides.
+-   **Configurable Targets:** Apoapsis, periapsis, inclination, launch latitude; units m / km / Mm; automatic plane change Δv.
+-   **Ideal Δv Model:** Surface-to-orbit ideal Δv (two-body, impulsive); auto-selection between energy-optimal and Hohmann models by orbit parameters.
 
-## 📦 Dependencies
+**Technical implementation details** → [Technical Description](Technical%20Description_EN.md).
 
-*   **Click Through Blocker** (Required)
+## Dependencies
 
-## 📥 Installation
+-   **Click Through Blocker**
+
+## Compatibility
+
+1. **Celestial bodies & aerodynamics mods:** Stock bodies, RSS (Real Solar System), FAR (Ferram Aerospace Research), etc. are theoretically supported for calculation. Actual payload capacity depends on real flight trajectory; results are for reference only. Prediction accuracy is generally acceptable in most scenarios.
+2. **Launch pad mods:** This mod has minimized the impact of **AlphaMensaes Modular Launch Pads** and similar launch pad mods on calculations (though some cases may still slip through). For more accurate payload estimates, **do not** include launch clamps, launch pads, or other rocket-unrelated dead weight in your vessel when calculating.
+
+## Installation
 
 1.  Download the latest release.
 2.  Copy the `GameData/OrbitalPayloadCalculator` folder into your KSP installation’s `GameData` directory.
 3.  Ensure **Click Through Blocker** is installed.
 
-## 🎮 Usage Guide
+## Usage Guide
 
 ### Open the Calculator
-*   **Hotkey:** Press **Left Alt + P** (default) to toggle the window.
-*   **Toolbar:** Click the **Orbital Payload Calculator** icon in the AppLauncher.
+-   **Hotkey:** Press **Left Alt + P** (default) to toggle the window.
+-   **Toolbar:** Click the **Orbital Payload Calculator** icon in the AppLauncher.
 
 ### Workflow
 1.  **Select Body:** Choose the celestial body you are launching from (e.g., Kerbin).
 2.  **Set Orbit:** Enter your desired **Apoapsis**, **Periapsis**, **Inclination**, and **Launch Latitude**.
 3.  **Launch Latitude:**
-    *   In Editor: Enter the expected launch latitude manually (range -90° to 90°). Invalid values will be flagged.
-    *   In Flight: Automatically reads the vessel's current latitude; displayed in degrees-minutes-seconds (DMS) with N/S.
+    -   In Editor: Enter the expected launch latitude manually (range -90° to 90°). Invalid values will be flagged.
+    -   In Flight: Automatically reads the vessel's current latitude; displayed in degrees-minutes-seconds (DMS) with N/S.
 4.  **Loss Settings:**
-    *   **Pessimistic / Normal / Optimistic:** Choose one; all use the built-in ascent simulation. Normal is default; Optimistic assumes a more optimized ascent; Pessimistic gives conservative, higher-loss estimates.
-    *   **Advanced Settings:** Expandable anytime. Set turn speed, Cd coefficient (drag coefficient, range 0.3–2.0), turn altitude, and gravity/atmosphere/attitude overrides; **Advanced parameters override Pessimistic/Normal/Optimistic**.
-    *   **Attitude loss reference:** Excellent trajectory 10–30 m/s, average 30–80 m/s, aggressive turn 100–300 m/s.
-5.  **Calculate:** Click the **Calculate** button.
+    -   **Pessimistic / Normal / Optimistic:** Choose one; all use the built-in ascent simulation. Normal is the default; Optimistic assumes a more optimized ascent; Pessimistic gives conservative, higher-loss estimates.
+    -   **Advanced Settings:** Expandable anytime. Set turn speed, Cd coefficient (range 0.3–2.0), turn altitude, and gravity/atmosphere/attitude overrides; **Advanced parameters override Pessimistic/Normal/Optimistic**.
+    -   **Treat cargo bay as fairing:** When enabled, cargo bay mass is excluded at its jettison stage; disable if the cargo bay stays on for orbit.
+    -   **Attitude loss reference:** Excellent trajectory 10–30 m/s, average 30–80 m/s, aggressive turn 100–300 m/s.
+5.  **Engine Classification:** In the stage breakdown, click **Engine Classification** to override engine roles per part (e.g., mark retro as participating); overrides are persisted.
+6.  **Calculate:** Click the **Calculate** button.
 
 ### Results Explained
-*   **Vessel block** (top): Vessel name, wet mass, dry mass.
-*   **Orbit block:** Launch body, apoapsis, periapsis, inclination, eccentricity.
-*   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
-*   **Required Delta-V:** Total Delta-V needed to reach orbit (Ideal Δv + Losses + Plane Change ± Rotation Assist). Ideal Δv is the theoretical minimum from surface to target orbit; see **Delta-V Details** for breakdown.
-*   **Available Delta-V:** Your vessel's total Delta-V. In Flight, the **Delta-V Details** popup also shows ground altitude above this.
-*   **Loss Breakdown:** Shows how much Delta-V is lost to Gravity, Drag, and Steering (Attitude).
+-   **Vessel block** (top): Vessel name, wet mass, dry mass.
+-   **Orbit block:** Launch body, apoapsis, periapsis, inclination, eccentricity.
+-   **Estimated Payload:** The max tonnage you can add to the vessel's current payload.
+-   **Required Delta-V:** Total Delta-V needed to reach orbit (Ideal Δv + Losses + Plane Change ± Rotation Assist). Ideal Δv is the theoretical minimum from surface to target orbit; see **Delta-V Details** for breakdown.
+-   **Available Delta-V:** Your vessel's total Delta-V. In Flight, the **Delta-V Details** popup also shows ground altitude above this.
+-   **Loss Breakdown:** Shows how much Delta-V is lost to Gravity, Drag, and Steering (Attitude).
 
 ### Payload Calculation Methods
 
-*   **Incorporate Payload:**
+-   **Incorporate Payload:**
    Treats the payload as part of the total rocket mass. As long as the estimated payload is greater than 0, the rocket still has transport capacity.
 
-*   **Pure Rocket:**
+-   **Pure Rocket:**
    Sets the payload aside (does not affect rocket calculation) and calculates the rocket's own Delta-V directly to determine transport capacity.
 
 <div style="display: flex; flex-direction: column; gap: 20px; justify-content: center; align-items: center;">
@@ -120,34 +110,17 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
   </div>
 </div>
 
-## 🧩 How It Works
+## Notes
 
-1.  **Ideal Δv (Surface → Orbit):** Uses a hybrid model—**Model A** (energy-optimal lower bound) for near-surface and low-eccentricity mid orbits, **Model B** (Hohmann structure) for high and high-eccentricity orbits. Selection is automatic based on α = a/r₀ and eccentricity.
-2.  **Vessel Analysis:** The mod scans your vessel (active or editor) to build a staging list, calculating mass, thrust, and ISP for each stage.
-3.  **Ascent Simulation:** It simulates a gravity turn ascent:
-    *   Vertical climb until a specific velocity/altitude.
-    *   Gravity turn pitching over based on a power-law curve (exponent 0.40/0.45 in Optimistic, 0.58/0.70 in Normal, 0.65/0.80 in Pessimistic).
-    *   Drag: Cd coefficient is user-configurable or heuristic (0.50/1.0/1.5 × √mass per mode); same in both Editor and Flight.
-    *   Thrust and ISP vary dynamically with atmospheric pressure.
-4.  **Binary Search:** It runs the simulation multiple times, adjusting the ***simulated payload mass*** until the Available Delta-V matches the Required Delta-V, finding the limit of your rocket's capacity.
-5.  **Manual Overrides:** Use the **Engine Classification** popup to override engine roles per part and persist them for the current vessel.
+-   **SSTO Support**
+    -   **Pure Rocket SSTO:** Theoretically well-supported.
+    -   **Air-breathing / Hybrid SSTO:** (e.g., RAPIER) Use for reference only, as propellants like IntakeAir (not stored in tanks) are not included in the calculation.
 
-## ⚠️ Notes
+-   **Calculation Accuracy**
+    -   Actual launches are affected by factors like gravity turn speed vs. start height, flight trajectory, vessel aerodynamics, and piloting style. Therefore, the calculated payload is a theoretical estimate.
+    -   If actual flight results deviate from calculations, try optimizing gravity turn speed, turn height, and related parameters in MechJeb (MJ) to get closer to theoretical performance.
 
-*   **SSTO Support**
-    *   **Pure Rocket SSTO:** Theoretically well-supported.
-    *   **Air-breathing / Hybrid SSTO:** (e.g., RAPIER) Use for reference only, as propellants like IntakeAir (not stored in tanks) are not included in the calculation.
+-   **Development Status**
 
-*   **Calculation Accuracy**
-    *   Actual launches are affected by factors like gravity turn speed vs. start height, flight trajectory, vessel aerodynamics, and piloting style. Therefore, the calculated payload is a theoretical estimate.
-    *   If actual flight results deviate from calculations, try optimizing gravity turn speed, turn height, and related parameters in MechJeb (MJ) to get closer to theoretical performance.
-
-*   **Compatibility & Testing**
-
-    *   The current version has NOT been systematically tested with **FAR (Ferram Aerospace Research)**, **RSS (Real Solar System)**, **Principia**, or **Rescale** mods.
-    *   You are welcome to test in these environments and provide feedback or suggestions.
-
-*   **Development Status**
-
-    *   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every ***aerodynamic disaster***.
-    *   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true ***Chief Engineer*** together.
+    -   This mod is still being improved — it can help you calculate Delta-V, but it's not smart enough to save you from every ***aerodynamic disaster***.
+    -   If it miscalculates, explodes, or behaves like an intern engineer, feedback and suggestions are welcome. Let's polish it into a true ***Chief Engineer*** together.
