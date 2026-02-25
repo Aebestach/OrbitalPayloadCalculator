@@ -14,7 +14,7 @@ These values are derived from orbital mechanics and the celestial body's physica
 
 | Data | Formula / Method | Body Properties Used |
 |------|-----------------|----------------------|
-| **Ideal Delta-V from Surface** | Two models, auto-selected by $\alpha = a/r_0$ and $e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$. **Model A (α < 1.5 or α ≤ 2 & e < 0.1):** $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. **Model B (else):** Hohmann burn1+burn2, or +burn3 for elliptical | `gravParameter`, `Radius`, rPe, rAp |
+| **Ideal Delta-V from Surface** | Two models, auto-selected by $\alpha = a/r_0$ and $e = (r_{\mathrm{Ap}}-r_{\mathrm{Pe}})/(r_{\mathrm{Ap}}+r_{\mathrm{Pe}})$. **Model A** (α < 1.5 or α ≤ 2 and e < 0.1): $\sqrt{2\mu(1/r_0 - 1/(r_{\mathrm{Pe}}+r_{\mathrm{Ap}}))}$. **Model B (else):** Hohmann burn1+burn2, or +burn3 for elliptical | `gravParameter`, `Radius`, rPe, rAp |
 | **Orbital Speed** | $v = \sqrt{\mu(2/r_{\mathrm{Pe}} - 1/a)}$ | `gravParameter`, `Radius`, orbit altitudes |
 | **Plane Change Delta-V** | $2v \sin(\theta/2)$ | Orbital speed, launch latitude, target inclination |
 | **Rotation Bonus/Loss** | Equatorial speed + latitude correction | `rotationPeriod`, `Radius` |
@@ -50,7 +50,7 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 | **CdA (Drag Area)** | Both Editor and Flight: $C_d \times \sqrt{m_{\mathrm{wet}}}$, where $m_{\mathrm{wet}}$ is wet mass in tons. User $C_d$ (0.3–2.0) or default 0.50/1.0/1.5 (Optimistic/Normal/Pessimistic) | $C_d$ coefficient × √mass heuristic |
 | **Gravity Loss (no simulation)** | `FallbackEstimate` empirical formula | Used when thrust/Isp data is missing |
 | **Atmospheric Loss (no simulation)** | $A_{\mathrm{atmo}} + B_{\mathrm{atmo}}$ empirical formula | Fitted using $g_N$, $p_N$, $d_N$ body scales |
-| **Attitude Loss** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$ with $f_{\mathrm{inc}} = (i/90°) \times |\cos\phi|$. $A$, $B$ scaled by mode and $g_N$, $d_N$, $p_N$ | Empirical coefficients; typical reference in table below |
+| **Attitude Loss** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$ with $f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert$. $A$, $B$ scaled by mode and $g_N$, $d_N$, $p_N$ | Empirical coefficients; typical reference in table below |
 | **Turn Start Speed** | $v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})$, with $v_{\mathrm{base}}$ = 55/80/95 m/s per mode | Gravity and atmosphere scaling |
 | **Turn Start Altitude** | $h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)$ | Heuristic turn altitude |
 | **Turn Exponent (gravity turn)** | Linear fit from turn start speed; typical values: bottom 0.40/0.58/0.65, full 0.45/0.70/0.80 | Empirical; controls pitch-over rate |

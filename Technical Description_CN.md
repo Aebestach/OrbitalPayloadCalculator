@@ -50,7 +50,7 @@
 | **CdA（气动阻力面积）** | 编辑器和飞行模式一致：$C_d \times \sqrt{m_{\mathrm{wet}}}$，$m_{\mathrm{wet}}$ 为湿质量（吨）。用户输入 $C_d$ (0.3–2.0) 或默认 0.50/1.0/1.5（乐观/普通/悲观） | $C_d$ 系数 × √质量 启发式 |
 | **重力损失**（无仿真时） | `FallbackEstimate` 经验公式 | 无推力/Isp 数据时使用的替代公式 |
 | **大气损失**（无仿真时） | $A_{\mathrm{atmo}} + B_{\mathrm{atmo}}$ 经验公式 | 基于 $g_N$、$p_N$、$d_N$ 归一化缩放因子的拟合公式 |
-| **姿态损失** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$，$f_{\mathrm{inc}} = (i/90°) \times |\cos\phi|$。$A$、$B$ 由模式及 $g_N$、$d_N$、$p_N$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
+| **姿态损失** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$，$f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert$。$A$、$B$ 由模式及 $g_N$、$d_N$、$p_N$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
 | **Turn Start Speed** | $v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})$，$v_{\mathrm{base}}$ 按模式取 55/80/95 m/s | 基于重力、大气归一化得出的启转速度 |
 | **Turn Start Altitude** | $h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)$ | 启转高度估计 |
 | **转弯指数（重力转弯）** | 由启转速度线性拟合得出，典型值：底级 0.40/0.58/0.65，全段 0.45/0.70/0.80 | 经验值；控制俯仰转向速率 |
