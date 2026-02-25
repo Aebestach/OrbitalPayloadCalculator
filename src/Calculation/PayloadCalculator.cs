@@ -27,7 +27,7 @@ namespace OrbitalPayloadCalculator.Calculation
 
     /// <summary>
     /// Per-engine data used for dynamic ISP / thrust simulation.
-    /// IspSamples[i] = ISP at pressure PressureSamples[i] (atm, 0=vacuum..1=sea-level).
+    /// IspSamples[i] = ISP at pressure PressureSamples[i] (atm; 0=vacuum, 1=Kerbin sea, 5=Eve sea).
     /// ThrustCurveSamples: normalised thrust multiplier vs burn-time fraction (for SRBs).
     /// </summary>
     internal sealed class EngineEntry
@@ -59,11 +59,18 @@ namespace OrbitalPayloadCalculator.Calculation
 
         public bool IsSolid => Role == EngineRole.Solid;
 
+        /// <summary>Isp at given pressure (atm). Supports p&gt;1 for Eve etc.; extrapolates beyond samples.</summary>
         public double GetIspAtPressure(double pressureAtm)
         {
             if (PressureSamples == null || PressureSamples.Length == 0)
-                return VacuumIsp + (SeaLevelIsp - VacuumIsp) * Math.Max(0d, Math.Min(1d, pressureAtm));
-            var p = Math.Max(PressureSamples[0], Math.Min(PressureSamples[PressureSamples.Length - 1], pressureAtm));
+            {
+                var frac = Math.Max(0d, Math.Min(15d, pressureAtm));
+                return Math.Max(1d, VacuumIsp + (SeaLevelIsp - VacuumIsp) * frac);
+            }
+            var p = Math.Max(0d, pressureAtm);
+            var p0 = PressureSamples[0];
+            var pLast = PressureSamples[PressureSamples.Length - 1];
+            if (p <= p0) return IspSamples[0];
             for (int i = 0; i < PressureSamples.Length - 1; i++)
             {
                 if (p <= PressureSamples[i + 1])
@@ -73,7 +80,10 @@ namespace OrbitalPayloadCalculator.Calculation
                     return IspSamples[i] * (1d - t) + IspSamples[i + 1] * t;
                 }
             }
-            return IspSamples[IspSamples.Length - 1];
+            if (p <= pLast) return IspSamples[IspSamples.Length - 1];
+            var n = PressureSamples.Length;
+            var slope = (IspSamples[n - 1] - IspSamples[n - 2]) / (PressureSamples[n - 1] - PressureSamples[n - 2]);
+            return Math.Max(1d, IspSamples[n - 1] + slope * (p - pLast));
         }
 
         public double GetThrustMultiplier(double burnFraction)
@@ -207,6 +217,75 @@ namespace OrbitalPayloadCalculator.Calculation
             return Math.Max(0.001d, stage.WetMassTons - stage.PropellantMassTons - fairing);
         }
 
+        /// <summary>
+        /// Thrust at selected body's sea level: uses Isp at that body's atmospheric pressure.
+        /// No atmosphere or no body => vacuum thrust. Fallback to Kerbin sea-level when no per-engine data.
+        /// </summary>
+        internal static double GetThrustAtBodySeaLevel(StageInfo stage, CelestialBody body)
+        {
+            if (stage == null || stage.ThrustkN <= 0d) return 0d;
+            double pressureAtm = 0d;
+            if (body != null && body.atmosphere && body.atmospherePressureSeaLevel > 0d)
+                pressureAtm = body.atmospherePressureSeaLevel / OneAtmKPa;
+
+            if (stage.Engines != null && stage.Engines.Count > 0)
+            {
+                double total = 0d;
+                foreach (var e in stage.Engines)
+                {
+                    if (e == null || !IsDvParticipatingRole(e.Role)) continue;
+                    var isp = e.GetIspAtPressure(pressureAtm);
+                    if (e.VacuumIsp > 0d)
+                        total += e.ThrustkN * (isp / e.VacuumIsp);
+                    else
+                        total += e.ThrustkN;
+                }
+                return total;
+            }
+
+            if (stage.VacuumIsp <= 0d) return stage.ThrustkN;
+            var frac = Math.Max(0d, Math.Min(15d, pressureAtm));
+            var seaIsp = Math.Max(1d, stage.VacuumIsp + (stage.SeaLevelIsp - stage.VacuumIsp) * frac);
+            return stage.ThrustkN * (seaIsp / stage.VacuumIsp);
+        }
+
+        /// <summary>
+        /// Bottom stage sea-level TWR at the selected body. Returns -1 when not computable.
+        /// </summary>
+        internal static double GetBottomStageSeaLevelTWR(VesselStats stats, CelestialBody body)
+        {
+            if (stats?.Stages == null || stats.Stages.Count == 0 || body == null) return -1d;
+            int maxProp = -1;
+            foreach (var s in stats.Stages)
+            {
+                if (StageHasDvEngines(s) && s.PropellantMassTons > 0d && s.StageNumber > maxProp)
+                    maxProp = s.StageNumber;
+            }
+            if (maxProp < 0) return -1d;
+
+            double cumulativeAbove = 0d;
+            var sorted = new List<StageInfo>(stats.Stages);
+            sorted.Sort((a, b) => a.StageNumber.CompareTo(b.StageNumber));
+            foreach (var s in sorted)
+            {
+                if (s.StageNumber < maxProp) cumulativeAbove += s.WetMassTons;
+            }
+
+            StageInfo bottom = null;
+            foreach (var s in sorted)
+            {
+                if (s.StageNumber == maxProp) { bottom = s; break; }
+            }
+            if (bottom == null) return -1d;
+
+            double stageWet = bottom.WetMassTons + cumulativeAbove;
+            if (stageWet <= 0d) return -1d;
+            var surfG = body.GeeASL * G0;
+            if (surfG <= 0d) return -1d;
+            var slThrust = GetThrustAtBodySeaLevel(bottom, body);
+            return slThrust / (stageWet * surfG);
+        }
+
         public static PayloadCalculationResult Compute(VesselStats stats, OrbitTargets orbitTargets, LossModelConfig lossConfig)
         {
             var result = new PayloadCalculationResult
@@ -289,7 +368,7 @@ namespace OrbitalPayloadCalculator.Calculation
             int maxPropStageNum = -1;
 
             LossModel.ResolveTurnParams(body, lossConfig.EstimateMode, lossConfig.TurnStartSpeed,
-                lossConfig.TurnStartAltitude, out var turnStartSpeed, out var turnStartAltitude);
+                lossConfig.TurnStartAltitude, out var turnStartSpeed, out var turnStartAltitude, stats);
 
             var mode = lossConfig.EstimateMode;
             double userCdA = lossConfig.CdACoefficient > 0d ? lossConfig.CdACoefficient : LossModel.GetCdForMode(mode);
@@ -413,9 +492,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 stage.MassAtIgnition = stageWet;
                 stage.MassAfterBurn = stageDry;
                 var surfG = body != null ? body.GeeASL * G0 : G0;
-                var slThrust = stage.VacuumIsp > 0d
-                    ? stage.ThrustkN * (stage.SeaLevelIsp / stage.VacuumIsp)
-                    : stage.ThrustkN;
+                var slThrust = GetThrustAtBodySeaLevel(stage, body);
                 stage.TWRAtIgnition = stageWet > 0d && surfG > 0d
                     ? slThrust / (stageWet * surfG)
                     : 0d;
@@ -675,9 +752,9 @@ namespace OrbitalPayloadCalculator.Calculation
             if (lnMassRatio <= 0.0d)
                 return 0.0d;
 
-            // Dynamic simulation only applies to the launch stage in atmosphere.
-            if (isBottomStage && body != null && body.atmosphere && body.atmosphereDepth > 0.0d &&
-                stage.VacuumIsp > 0.0d && stage.ThrustkN > 0.0d)
+            // Dynamic simulation for launch (bottom) stage: includes gravity loss for all bodies.
+            // With atmosphere: pressure-varying Isp, drag. Without: vacuum Isp throughout.
+            if (isBottomStage && body != null && stage.VacuumIsp > 0.0d && stage.ThrustkN > 0.0d)
             {
                 var dynamicDv = SimulateBottomStageDv(body, stats, stage, stageWetTons, stageDryTons, turnStartSpeed, turnStartAltitude, userCdA, userTurnExponentBottom);
                 if (dynamicDv > 0.0d)
@@ -707,7 +784,7 @@ namespace OrbitalPayloadCalculator.Calculation
         }
 
         private const int SimulateBottomStageDvCacheCapacity = 128;
-        private static readonly Dictionary<(long, long, long, long, long, long), double> SimulateBottomStageDvCache = new Dictionary<(long, long, long, long, long, long), double>();
+        private static readonly Dictionary<(long, long, long, long, long, long, string), double> SimulateBottomStageDvCache = new Dictionary<(long, long, long, long, long, long, string), double>();
 
         private static void ClearSimulateBottomStageDvCache()
         {
@@ -725,14 +802,16 @@ namespace OrbitalPayloadCalculator.Calculation
             }
 
             var turnStartSpeed = userTurnStartSpeed > 0d ? userTurnStartSpeed : 70.0d;
-            var turnStartAlt = userTurnStartAltitude > 0d ? userTurnStartAltitude : Math.Max(600.0d, Math.Min(18000.0d, body.atmosphereDepth * 0.012d));
+            var atmoDepth = body.atmosphere && body.atmosphereDepth > 0d ? body.atmosphereDepth : 0d;
+            var turnStartAlt = userTurnStartAltitude > 0d ? userTurnStartAltitude : Math.Max(600.0d, Math.Min(18000.0d, atmoDepth > 0d ? atmoDepth * 0.012d : 600.0d));
+            var keyBody = body?.bodyName ?? "";
             var keyWet = (long)Math.Round(stageWetTons, 1);
             var keyDry = (long)Math.Round(stageDryTons, 1);
             var keyTurnS = (long)Math.Round(turnStartSpeed);
             var keyTurnA = (long)Math.Round(turnStartAlt);
             var keyCd = (long)(userCdA * 100.0d + 0.5d);
             var keyExp = (long)(userTurnExponentBottom * 100.0d + 0.5d);
-            var key = (keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp);
+            var key = (keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBody);
             if (SimulateBottomStageDvCache.TryGetValue(key, out var cached))
                 return cached;
             if (SimulateBottomStageDvCache.Count >= SimulateBottomStageDvCacheCapacity)
@@ -742,7 +821,6 @@ namespace OrbitalPayloadCalculator.Calculation
 
             const double dt = 0.5d;
             const double maxTime = 600.0d;
-            var seaP = body.atmospherePressureSeaLevel > 0d ? body.atmospherePressureSeaLevel : OneAtmKPa;
 
             var engines = stage.Engines;
             bool hasPerEngineData = engines != null && engines.Count > 0;
@@ -864,7 +942,9 @@ namespace OrbitalPayloadCalculator.Calculation
             var velocity = 0.1d;
             var gamma = Math.PI * 0.5d;
             var turnStarted = false;
-            var turnEndAlt = Math.Max(turnStartAlt + 1000.0d, body.atmosphereDepth * 0.85d);
+            var turnEndAlt = atmoDepth > 0d
+                ? Math.Max(turnStartAlt + 1000.0d, atmoDepth * 0.85d)
+                : turnStartAlt + 10000.0d;
             var totalDv = 0.0d;
 
             var cdaFixed = userCdA * Math.Sqrt(Math.Max(0.01d, stageWetTons));
@@ -881,7 +961,7 @@ namespace OrbitalPayloadCalculator.Calculation
                     pKPa = Math.Max(0.0d, body.GetPressure(altitude));
                     tempK = Math.Max(0.0d, body.GetTemperature(altitude));
                 }
-                var pressureAtm = Math.Max(0.0d, Math.Min(1.0d, pKPa / seaP));
+                var pressureAtm = Math.Max(0.0d, pKPa / OneAtmKPa);
 
                 double combinedThrustN = 0d;
                 double combinedMassFlowKgS = 0d;
@@ -1024,7 +1104,7 @@ namespace OrbitalPayloadCalculator.Calculation
                 if (massKg < dryMassKg) massKg = dryMassKg;
             }
 
-            SimulateBottomStageDvCache[(keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp)] = totalDv;
+            SimulateBottomStageDvCache[(keyWet, keyDry, keyTurnS, keyTurnA, keyCd, keyExp, keyBody)] = totalDv;
             return totalDv;
         }
 

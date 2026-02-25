@@ -40,7 +40,7 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
 ## Features
 
 -   **Payload Estimation:** Calculates the maximum payload (tons) to your target orbit; iteratively matches available Delta-V against required Delta-V.
--   **Advanced Loss Modeling:** Ascent simulation based on actual atmospheric curves; Pessimistic / Normal / Optimistic modes; Advanced parameter overrides.
+-   **Advanced Loss Modeling:** Ascent simulation based on actual atmospheric curves; Pessimistic / Normal / Optimistic modes; bottom-stage sea-level TWR and turn start speed auto-scaled by selected body and vehicle; Advanced parameter overrides.
 -   **Multi-Body & Rotation:** Supports any celestial body and launch latitude; accounts for prograde/retrograde launch.
 -   **Staged Analysis:** Multi-stage support; automatic engine role classification (Main / Solid / Electric / Retro / Settling / EscapeTower); separation group detection; manual engine role overrides.
 -   **Configurable Targets:** Apoapsis, periapsis, inclination, launch latitude; units m / km / Mm; automatic plane change Delta-V.

@@ -24,6 +24,7 @@ These values are derived from orbital mechanics and the celestial body's physica
 | **Atmospheric Density (in simulation)** | $\rho = p/(R_{\mathrm{air}} \cdot T)$ | `GetPressure(h)`, `GetTemperature(h)` |
 | **Default Orbit Altitude** | Atmosphere top + 10,000 m | `atmosphereDepth` |
 | **Separation Groups (booster dry mass)** | Decoupler scan over all stages `maxPropStageNum-1` … 0; drop when engines exhaust | Part hierarchy, `inverseStage`, `ModuleDecouple` |
+| **Bottom-stage sea-level TWR** | Thrust uses Isp at selected body's sea-level pressure; gravity from `body.GeeASL` | `atmospherePressureSeaLevel`, `GeeASL`, `engine.atmosphereCurve` |
 
 ### Ideal Delta-V Model Detail (Surface → Orbit)
 
@@ -51,7 +52,7 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 | **Gravity Loss (no simulation)** | `FallbackEstimate` empirical formula | Used when thrust/Isp data is missing |
 | **Atmospheric Loss (no simulation)** | $A_{\mathrm{atmo}} + B_{\mathrm{atmo}}$ empirical formula | Fitted using $g_N$, $p_N$, $d_N$ body scales |
 | **Attitude Loss** | $(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})$ with $f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert$. $A$, $B$ scaled by mode and $g_N$, $d_N$, $p_N$ | Empirical coefficients; typical reference in table below |
-| **Turn Start Speed** | $v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})$, with $v_{\mathrm{base}}$ = 55/80/95 m/s per mode | Gravity and atmosphere scaling |
+| **Turn Start Speed** | $v_{\mathrm{auto}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})$; when bottom-stage TWR ∈ [1.05, 3.0] and not user-overridden, $v_{\mathrm{turn}} = v_{\mathrm{auto}} \times \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}$; else $v_{\mathrm{turn}} = v_{\mathrm{auto}}$; $v_{\mathrm{base}}$ = 55/80/95 m/s, $\mathrm{TWR}_{\mathrm{ref}}$ = 1.4/1.5/1.6 per mode | Gravity, atmosphere, and bottom-stage TWR scaling |
 | **Turn Start Altitude** | $h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)$ | Heuristic turn altitude |
 | **Turn Exponent (gravity turn)** | Linear fit from turn start speed; typical values: bottom 0.40/0.58/0.65, full 0.45/0.70/0.80 | Empirical; controls pitch-over rate |
 
@@ -65,11 +66,11 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 
 ## 1.3 Estimate Mode Parameters
 
-| Mode | Cd | Turn Start Speed | Turn Exp. Bottom | Turn Exp. Full |
-|------|----|------------------|------------------|----------------|
-| Optimistic | 0.50 | 55 m/s base | 0.40 | 0.45 |
-| Normal | 1.0 | 80 m/s base | 0.58 | 0.70 |
-| Pessimistic | 1.5 | 95 m/s base | 0.65 | 0.80 |
+| Mode | Cd | Turn Start Speed | TWR Ref | Turn Exp. Bottom | Turn Exp. Full |
+|------|----|------------------|---------|------------------|----------------|
+| Optimistic | 0.50 | 55 m/s base | 1.4 | 0.40 | 0.45 |
+| Normal | 1.0 | 80 m/s base | 1.5 | 0.58 | 0.70 |
+| Pessimistic | 1.5 | 95 m/s base | 1.6 | 0.65 | 0.80 |
 
 ## 1.4 Parameter Priority
 
@@ -77,8 +78,8 @@ These values use heuristics or fitted formulas because precise inputs are unavai
 
 ## 1.5 Summary
 
-- **Calculated:** Ideal Delta-V from surface (Model A/B), orbital speed, plane change Delta-V, rotation bonus, stage Delta-V, gravity field, atmospheric pressure/temperature/density, atmosphere-blended Isp. All driven by body data and change per celestial body.
-- **Estimated:** Cd coefficient and CdA, gravity/atmospheric/attitude losses (especially in fallback and attitude terms), turn start speed/altitude, turn exponent. These rely on heuristics or empirical rules.
+- **Calculated:** Ideal Delta-V from surface (Model A/B), orbital speed, plane change Delta-V, rotation bonus, stage Delta-V, gravity field, atmospheric pressure/temperature/density, atmosphere-blended Isp, bottom-stage sea-level TWR. All driven by body data and change per celestial body.
+- **Estimated:** Cd coefficient and CdA, gravity/atmospheric/attitude losses (especially in fallback and attitude terms), turn start speed/altitude, turn exponent. Turn start speed (when not user-overridden) is derived from mode base, body scaling, and bottom-stage TWR; when TWR ∈ [1.05, 3.0], $v_{\mathrm{turn}} \propto \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}$, with $\mathrm{TWR}_{\mathrm{ref}}$ = 1.4/1.5/1.6 per mode.
 - **Editor & Flight:** CdA uses the same heuristic; no geometry-based CdA.
 
 ---

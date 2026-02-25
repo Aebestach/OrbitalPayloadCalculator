@@ -644,17 +644,19 @@ namespace OrbitalPayloadCalculator.Services
             }
         }
 
+        /// <summary>
+        /// Samples engine atmosphereCurve from 0 (vacuum) to 10 atm (Eve-level) for all-body support.
+        /// </summary>
         private static void SampleAtmosphereCurve(ModuleEngines engine, EngineEntry entry)
         {
             if (engine.atmosphereCurve == null) return;
-            const int n = 11;
-            entry.PressureSamples = new double[n];
-            entry.IspSamples = new double[n];
-            for (int i = 0; i < n; i++)
+            var pressures = new[] { 0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0 };
+            entry.PressureSamples = new double[pressures.Length];
+            entry.IspSamples = new double[pressures.Length];
+            for (int i = 0; i < pressures.Length; i++)
             {
-                double p = i / (double)(n - 1);
-                entry.PressureSamples[i] = p;
-                entry.IspSamples[i] = (double)engine.atmosphereCurve.Evaluate((float)p);
+                entry.PressureSamples[i] = pressures[i];
+                entry.IspSamples[i] = (double)engine.atmosphereCurve.Evaluate((float)pressures[i]);
             }
         }
 

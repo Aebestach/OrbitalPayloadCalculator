@@ -24,6 +24,7 @@
 | **仿真中大气密度** | $`\rho = p/(R_{\mathrm{air}} \cdot T)`$ | `GetPressure(h)`、`GetTemperature(h)` |
 | **默认轨道高度** | 大气顶 + 10000 m | `atmosphereDepth` |
 | **分离组（助推器干质量）** | 扫描 `maxPropStageNum-1` 至 0 所有阶段的分离器；发动机燃尽时抛离 | 部件层级、`inverseStage`、`ModuleDecouple` |
+| **底级海平面 TWR** | 推力按所选天体海平面气压下的 Isp 计算；重力取 `body.GeeASL` | `atmospherePressureSeaLevel`、`GeeASL`、`engine.atmosphereCurve` |
 
 ### 地表理想 Delta-V 模型详情
 
@@ -51,7 +52,7 @@
 | **重力损失**（无仿真时） | `FallbackEstimate` 经验公式 | 无推力/Isp 数据时使用的替代公式 |
 | **大气损失**（无仿真时） | $`A_{\mathrm{atmo}} + B_{\mathrm{atmo}}`$ 经验公式 | 基于 $`g_N`$ 、 $`p_N`$ 、 $`d_N`$ 归一化缩放因子的拟合公式 |
 | **姿态损失** | $`(A + B \sqrt{p_N} \cdot g_N) \times (1 + f_{\mathrm{inc}})`$ ， $`f_{\mathrm{inc}} = (i/90°) \times \lvert\cos\phi\rvert`$ 。 $`A`$ 、 $`B`$ 由模式及 $`g_N`$ 、 $`d_N`$ 、 $`p_N`$ 等缩放 | 无论仿真与否都使用经验系数；典型参考见下表 |
-| **Turn Start Speed** | $`v_{\mathrm{turn}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})`$ ， $`v_{\mathrm{base}}`$ 按模式取 55/80/95 m/s | 基于重力、大气归一化得出的启转速度 |
+| **Turn Start Speed** | $`v_{\mathrm{auto}} = v_{\mathrm{base}} \times g_N^{0.25} \times (0.92 + 0.18 \ln(1+p_N) + 0.12 \cdot d_N^{0.3})`$ ；当底级 TWR ∈ [1.05, 3.0] 且用户未覆盖时， $`v_{\mathrm{turn}} = v_{\mathrm{auto}} \times \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}`$ ；否则 $`v_{\mathrm{turn}} = v_{\mathrm{auto}}`$ ； $`v_{\mathrm{base}}`$ 按模式取 55/80/95 m/s， $`\mathrm{TWR}_{\mathrm{ref}}`$ 按模式取 1.4/1.5/1.6 | 基于重力、大气、底级推重比的启转速度 |
 | **Turn Start Altitude** | $`h_{\mathrm{turn}} = \mathrm{Clamp}(h_{\mathrm{atmo}} \times (0.01 + 0.004 \ln(1+p_N)), 800, 22000) \times (v_{\mathrm{turn}}/80)`$ | 启转高度估计 |
 | **转弯指数（重力转弯）** | 由启转速度线性拟合得出，典型值：底级 0.40/0.58/0.65，全段 0.45/0.70/0.80 | 经验值；控制俯仰转向速率 |
 
@@ -65,11 +66,11 @@
 
 ## 1.3 估算模式参数
 
-| 模式 | Cd | 启转速度基准 | 底级转弯指数 | 全段转弯指数 |
-|------|----|-------------|--------------|--------------|
-| 乐观 | 0.50 | 55 m/s | 0.40 | 0.45 |
-| 普通 | 1.0 | 80 m/s | 0.58 | 0.70 |
-| 悲观 | 1.5 | 95 m/s | 0.65 | 0.80 |
+| 模式 | Cd | 启转速度基准 | TWR 参考 | 底级转弯指数 | 全段转弯指数 |
+|------|----|-------------|----------|--------------|--------------|
+| 乐观 | 0.50 | 55 m/s | 1.4 | 0.40 | 0.45 |
+| 普通 | 1.0 | 80 m/s | 1.5 | 0.58 | 0.70 |
+| 悲观 | 1.5 | 95 m/s | 1.6 | 0.65 | 0.80 |
 
 ## 1.4 参数优先级
 
@@ -77,8 +78,8 @@
 
 ## 1.5 简要总结
 
-- **可算的量**：地表理想 Delta-V（模型 A/B）、轨道速度、平面变轨、自转、阶段 Delta-V、重力场、大气压强/温度/密度、大气混合 Isp。这些都由天体数据驱动，随天体不同自动变化。
-- **估计的量**：Cd 系数与 CdA、重力/大气/姿态损失（尤其是 Fallback 和姿态项）、启转速度和高度、转弯指数。这些依赖启发式或经验规则。
+- **可算的量**：地表理想 Delta-V（模型 A/B）、轨道速度、平面变轨、自转、阶段 Delta-V、重力场、大气压强/温度/密度、大气混合 Isp、底级海平面 TWR。这些都由天体数据驱动，随天体不同自动变化。
+- **估计的量**：Cd 系数与 CdA、重力/大气/姿态损失（尤其是 Fallback 和姿态项）、启转速度和高度、转弯指数。启转速度在无用户覆盖时由模式基准 + 天体缩放 + 底级 TWR 共同决定；TWR 在 1.05～3.0 范围内时， $`v_{\mathrm{turn}} \propto \sqrt{\mathrm{TWR}_{\mathrm{ref}}/\mathrm{TWR}}`$ ， $`\mathrm{TWR}_{\mathrm{ref}}`$ 按模式取 1.4/1.5/1.6。
 - **编辑器和飞行模式**：CdA 使用相同启发式，不基于部件几何计算。
 
 ---
