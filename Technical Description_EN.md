@@ -399,16 +399,3 @@ The following parts **do not participate** in any mass, fuel, or dV calculation;
 | Andromeda AeroSpace Agency (AASA) launch pads | partName contains `launch.pad` (e.g., `aasa.ag.launch.pad`) |
 
 Excluded parts' mass, fuel, and engines are not included in statistics.
-
-## 3.10 Current Implementation Status (2026-02)
-
-**Engine classification:**
-
-- Six role types auto-identified: Main / Solid / Electric / Retro / Settling / EscapeTower
-- Calculation filter: only Main/Solid/Electric participate in dV and fuel allocation
-- UI override: "Engine Classification" dialog allows per-engine role cycling or revert to auto
-- Override persistence: stored by vessel key + part instance id to `GameData/OrbitalPayloadCalculator/PluginData/engine-role-overrides.cfg` (relative to KSP root)
-
-**Part exclusion:**
-
-- Implemented `IsExcludedFromCalculation`: excludes stock launch clamps, MLP (Alphadyne), AASA launch pads (`launch.pad`), etc., from mass and dV calculation.

@@ -399,16 +399,3 @@ Retro、Settling、EscapeTower 三类：
 | Andromeda AeroSpace Agency (AASA) 发射台 | partName 含 `launch.pad`（如 `aasa.ag.launch.pad`） |
 
 排除后，这些部件的质量、燃料、引擎均不会被计入统计数据。
-
-## 3.10 当前实现状态（2026-02）
-
-**引擎分类：**
-
-- 已实现六类角色自动识别：Main / Solid / Electric / Retro / Settling / EscapeTower。
-- 已实现计算过滤：仅 Main/Solid/Electric 参与 dV 与燃料分配。
-- 已实现 UI 覆盖：提供“引擎分类”弹窗，可逐引擎循环角色或恢复自动。
-- 已实现覆盖持久化：按 vessel key + part instance id 存储到 `GameData/OrbitalPayloadCalculator/PluginData/engine-role-overrides.cfg`（相对于 KSP 根目录）。
-
-**部件排除：**
-
-- 已实现 `IsExcludedFromCalculation`：排除原版发射塔架、MLP（Alphadyne）、AASA 发射台（`launch.pad`）等，使其不参与质量与 dV 计算。
