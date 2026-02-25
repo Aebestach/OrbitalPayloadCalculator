@@ -271,11 +271,11 @@ Both converge to $\sqrt{2\mu/r_0}$ (escape speed) as $r \to \infty$ or for high 
 
 # Part 3: Engine Classification and Identification
 
-This section describes the automatic identification rules for engine types in OrbitalPayloadCalculator, the player feedback mechanism, and how each engine type is handled in dV calculation and fuel allocation. Designed to support stock KSP, RO (Realism Overhaul), and multi-fuel engines.
+This section describes the automatic identification rules for engine types in OrbitalPayloadCalculator, the player feedback mechanism, and how each engine type is handled in Delta-V calculation and fuel allocation. Designed to support stock KSP, RO (Realism Overhaul), and multi-fuel engines.
 
 ## 3.1 Engine Role Definitions
 
-| Role | Description | Participates in dV | Assigned Fuel | Mass/Drag Counted |
+| Role | Description | Participates in Delta-V | Assigned Fuel | Mass/Drag Counted |
 |------|-------------|-------------------|---------------|------------------|
 | **Main** | Liquid (from tanks) | ✓ | ✓ | ✓ |
 | **Solid** | Solid (self-contained fuel, incl. RO) | ✓ | ✓ | ✓ |
@@ -284,13 +284,13 @@ This section describes the automatic identification rules for engine types in Or
 | **Settling** | Settling burn use | ✗ | ✗ | ✓ |
 | **EscapeTower** | Escape tower | ✗ | ✗ | ✓ |
 
-Engines that do not participate in dV or fuel allocation (Retro/Settling/EscapeTower) still have their mass and drag counted; otherwise the overall estimate would be biased. Participating engines receive only the propellants listed in their propellants.
+Engines that do not participate in Delta-V or fuel allocation (Retro/Settling/EscapeTower) still have their mass and drag counted; otherwise the overall estimate would be biased. Participating engines receive only the propellants listed in their propellants.
 
 ## 3.2 Retro Engine Identification
 
 ### Principle
 
-Retro engines have thrust direction inconsistent with the vehicle's bottom-stage main thrust (dot product < 0.8, including reverse and lateral). "Bottom-stage main thrust direction" is taken from the thrust direction of the single engine with the largest StageNumber (bottom stage, first to fire) and highest thrust among dV-participating engines (liquid, solid, electric).
+Retro engines have thrust direction inconsistent with the vehicle's bottom-stage main thrust (dot product < 0.8, including reverse and lateral). "Bottom-stage main thrust direction" is taken from the thrust direction of the single engine with the largest StageNumber (bottom stage, first to fire) and highest thrust among Delta-V-participating engines (liquid, solid, electric).
 
 ### Thrust Direction Retrieval
 
@@ -329,15 +329,15 @@ The difference:
 - Propellants are XenonGas + ElectricCharge etc., not LiquidFuel/Oxidizer
 - Fuel (including batteries) is already recorded in Part and resource systems
 
-**Recommendation: Electric propulsion uses the same dV calculation logic as liquid and solid**, i.e.:
+Electric propulsion uses the same Delta-V calculation logic as liquid and solid, i.e.:
 
-- Participates in stage dV accumulation
+- Participates in stage Delta-V accumulation
 - Participates in fuel allocation: assign propellants per propellants list (electric gets ElectricCharge/xenon etc., liquid gets LOx etc.); never assign what is not in propellants
 - No separate "electric branch" needed
 
 ## 3.4 Air-Breathing Engines
 
-**No special handling for now**; keep existing logic. Air-breathing propellants (e.g., IntakeAir) are not in tanks; the current implementation is incomplete and deferred to a future iteration.
+**No special handling for now**. Air-breathing propellants (e.g., IntakeAir) are not in tanks; the current implementation does not allocate such propellants.
 
 ## 3.5 Settling Engine Identification
 
@@ -368,21 +368,13 @@ To avoid interference and ensure correct liquid thrust direction calculation, id
 
 ## 3.8 Player Feedback and Manual Override
 
-### Design
-
-- Auto-identify each engine's `EngineRole` via code
-- Provide "Engine Classification" button to open UI list; player can override per engine
-- Save overrides to current vessel (e.g., part custom data or ship metadata); reused on next load
-
-### UI Options Example
-
-Each engine can be set to: Participate (liquid/solid/electric) / Retro / Settling / Escape tower / Do not participate. Liquid, solid, electric share the same dV and thrust logic; for UI display distinction, keep type labels without affecting calculation.
+Engine roles are auto-identified by code and support manual override by the player; overrides are stored in part custom data or ship metadata and persist with the vessel.
 
 ### Non-Participating Engines
 
 Retro, Settling, EscapeTower:
 
-- Do not count toward available dV
+- Do not count toward available Delta-V
 - Do not participate in fuel allocation (no propellants assigned)
 - Mass and drag still counted for the whole vessel to keep estimate reasonable
 
@@ -390,7 +382,7 @@ Retro, Settling, EscapeTower:
 
 ## 3.9 Part Exclusion (Mass Calculation)
 
-The following parts **do not participate** in any mass, fuel, or dV calculation; filtered via `IsExcludedFromCalculation` in `VesselSourceService.BuildStatsFromParts` and related flows:
+The following parts **do not participate** in any mass, fuel, or Delta-V calculation; filtered via `IsExcludedFromCalculation` in `VesselSourceService.BuildStatsFromParts` and related flows:
 
 | Type | Identification |
 |------|----------------|
