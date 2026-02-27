@@ -18,9 +18,14 @@ namespace OrbitalPayloadCalculator.Services
         private static readonly Dictionary<string, Dictionary<int, EngineRole>> EngineRoleOverrides =
             LoadEngineRoleOverrides();
 
+        /// <summary> Cache expiry: rebuild list at most every N frames (~4/sec at 60 FPS). </summary>
+        private const int CacheLifetimeFrames = 15;
+
         private readonly bool _isEditor;
         private readonly List<Vessel> _flightCandidates = new List<Vessel>();
         private int _selectedFlightIndex;
+        private int _cachedVesselCount = -1;
+        private int _lastBuildFrame = -1;
 
         /// <summary> When true, ModuleCargoBay parts are treated as fairings (excluded at jettison). </summary>
         public bool TreatCargoBayAsFairing { get; set; }
@@ -30,12 +35,34 @@ namespace OrbitalPayloadCalculator.Services
             _isEditor = isEditor;
         }
 
+        /// <summary> Force cache invalidation on next GetFlightCandidates call. </summary>
+        public void InvalidateFlightCandidatesCache()
+        {
+            _cachedVesselCount = -1;
+        }
+
         public IReadOnlyList<Vessel> GetFlightCandidates()
         {
-            _flightCandidates.Clear();
             if (_isEditor || FlightGlobals.VesselsLoaded == null)
+            {
+                _flightCandidates.Clear();
                 return _flightCandidates;
+            }
 
+            var currentCount = FlightGlobals.VesselsLoaded.Count;
+            var currentFrame = Time.frameCount;
+            var cacheValid = _cachedVesselCount == currentCount
+                && _lastBuildFrame >= 0
+                && (currentFrame - _lastBuildFrame) < CacheLifetimeFrames;
+
+            if (cacheValid)
+            {
+                if (_selectedFlightIndex >= _flightCandidates.Count)
+                    _selectedFlightIndex = Mathf.Max(0, _flightCandidates.Count - 1);
+                return _flightCandidates;
+            }
+
+            _flightCandidates.Clear();
             foreach (var vessel in FlightGlobals.VesselsLoaded)
             {
                 if (vessel == null || !vessel.loaded || !vessel.IsControllable)
@@ -52,6 +79,8 @@ namespace OrbitalPayloadCalculator.Services
             if (_selectedFlightIndex >= _flightCandidates.Count)
                 _selectedFlightIndex = Mathf.Max(0, _flightCandidates.Count - 1);
 
+            _cachedVesselCount = currentCount;
+            _lastBuildFrame = currentFrame;
             return _flightCandidates;
         }
 

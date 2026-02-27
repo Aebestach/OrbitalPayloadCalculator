@@ -54,6 +54,7 @@ namespace OrbitalPayloadCalculator.UI
         private bool _showAdvancedLoss = false;
 
         private CelestialBody[] _bodies = Array.Empty<CelestialBody>();
+        private bool _bodiesCached;
         private int _bodyIndex;
         private PayloadCalculationResult _lastResult = new PayloadCalculationResult();
         private VesselStats _lastStats = new VesselStats();
@@ -231,6 +232,7 @@ namespace OrbitalPayloadCalculator.UI
             _lastResult = new PayloadCalculationResult();
             _lastStats = new VesselStats();
             _bodies = Array.Empty<CelestialBody>();
+            _bodiesCached = false;
             _styleManager.Dispose();
         }
 
@@ -327,7 +329,7 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Label(Loc("#LOC_OPC_LaunchBody"), _styleManager.LabelStyle, GUILayout.Width(headerLabelWidth), GUILayout.Height(rowH));
 
             var currentBodyName = _bodies.Length > 0
-                ? _bodies[_bodyIndex].displayName.LocalizeBodyName()
+                ? _bodies[_bodyIndex].bodyName ?? ""
                 : Loc("#LOC_OPC_None");
 
             if (GUILayout.Button(Truncate(currentBodyName, 20), _styleManager.ButtonStyle, GUILayout.MaxWidth(220), GUILayout.Height(rowH)))
@@ -357,7 +359,7 @@ namespace OrbitalPayloadCalculator.UI
 
             for (var i = 0; i < _bodies.Length; i++)
             {
-                var bodyName = _bodies[i].displayName.LocalizeBodyName();
+                var bodyName = _bodies[i].bodyName ?? "";
                 var display = Truncate(bodyName, 26);
 
                 if (GUILayout.Button(display, i == _bodyIndex ? _styleManager.SelectedButtonStyle : _styleManager.ButtonStyle))
@@ -441,7 +443,7 @@ namespace OrbitalPayloadCalculator.UI
         private void DrawVesselSourcePanel()
         {
             GUILayout.Label(Loc("#LOC_OPC_VesselSource"), _styleManager.HeaderStyle);
-            GUILayout.Space(2);
+            GUILayout.Space(6);
 
             if (_isEditor)
             {
@@ -495,6 +497,7 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawVesselPopup(int id)
         {
+            GUILayout.Space(4);
             var candidates = _vesselService.GetFlightCandidates();
             var currentIdx = _vesselService.GetSelectedFlightIndex();
 
@@ -1163,7 +1166,7 @@ namespace OrbitalPayloadCalculator.UI
                 _lossConfig.OverrideAttitudeLoss = false;
 
             _lastBodyName = _targets.LaunchBody != null
-                ? _targets.LaunchBody.displayName.LocalizeBodyName()
+                ? _targets.LaunchBody.bodyName ?? ""
                 : Loc("#LOC_OPC_None");
             _vesselService.TreatCargoBayAsFairing = _settings.TreatCargoBayAsFairing;
             _lastStats = _vesselService.ReadCurrentStats();
@@ -1286,7 +1289,16 @@ namespace OrbitalPayloadCalculator.UI
 
         private void RefreshBodies()
         {
-            _bodies = FlightGlobals.Bodies?.Where(b => b != null).ToArray() ?? Array.Empty<CelestialBody>();
+            if (!_bodiesCached)
+            {
+                var bodies = FlightGlobals.Bodies?.Where(b => b != null).ToArray() ?? Array.Empty<CelestialBody>();
+                if (bodies.Length > 0)
+                {
+                    _bodies = bodies;
+                    _bodiesCached = true;
+                }
+            }
+
             if (_bodies.Length == 0)
             {
                 _bodyIndex = 0;
@@ -1428,18 +1440,4 @@ namespace OrbitalPayloadCalculator.UI
         }
     }
 
-    internal static class CelestialBodyLocalizationExtensions
-    {
-        public static string LocalizeBodyName(this string displayName)
-        {
-            if (string.IsNullOrEmpty(displayName))
-                return displayName;
-
-            var caretIdx = displayName.IndexOf('^');
-            if (caretIdx >= 0)
-                displayName = displayName.Substring(0, caretIdx);
-
-            return displayName;
-        }
-    }
 }
