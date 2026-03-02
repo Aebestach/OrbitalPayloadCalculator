@@ -28,6 +28,7 @@ namespace OrbitalPayloadCalculator.UI
         private readonly UIStyleManager _styleManager = new UIStyleManager();
         private readonly OrbitTargets _targets = new OrbitTargets();
         private readonly LossModelConfig _lossConfig = new LossModelConfig();
+        private readonly AnalysisWindow _analysisWindow;
 
         private Rect _windowRect;
 
@@ -137,6 +138,7 @@ namespace OrbitalPayloadCalculator.UI
             _hotkeyShiftInput = _settings.HotkeyShift;
             RefreshBodies();
             ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
+            _analysisWindow = new AnalysisWindow(_styleManager, _vesselService, _lossConfig);
         }
 
         public void OnGUI()
@@ -216,6 +218,8 @@ namespace OrbitalPayloadCalculator.UI
                     DrawEngineRoleSelectPopup, Loc("#LOC_OPC_SelectEngineRole"), _styleManager.WindowStyle);
             }
 
+            _analysisWindow.OnGUI();
+
             GUI.skin = savedSkin;
         }
 
@@ -229,6 +233,7 @@ namespace OrbitalPayloadCalculator.UI
             _showAdvancedHelpPopup = false;
             _showDvDetailsPopup = false;
             _showEngineRolePopup = false;
+            _analysisWindow.Dispose();
             _lastResult = new PayloadCalculationResult();
             _lastStats = new VesselStats();
             _bodies = Array.Empty<CelestialBody>();
@@ -418,8 +423,28 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Label(Loc("#LOC_OPC_TreatCargoBayAsFairingHint"), _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
             GUILayout.Space(2);
             GUILayout.Label(Loc("#LOC_OPC_SeparatorEngineHint"), _styleManager.LabelStyle);
+            
+            GUILayout.BeginHorizontal();
             if (GUILayout.Button(Loc("#LOC_OPC_Calculate"), _styleManager.ButtonStyle, GUILayout.Height(32)))
                 Compute();
+            if (GUILayout.Button(Loc("#LOC_OPC_AnalysisButton"), _styleManager.ButtonStyle, GUILayout.Height(32), GUILayout.Width(100)))
+            {
+                // Sync context before showing
+                // Ensure inputs are parsed to targets
+                Compute(); // Optional: run compute to sync targets? Or just parse inputs.
+                           // Actually Compute() updates _targets from inputs. So calling Compute first is good practice 
+                           // to validate inputs, but might be annoying if inputs are invalid.
+                           // Let's just parse inputs manually or assume user clicked Calculate at least once?
+                           // Better: Parse inputs without full compute.
+                
+                // For now, let's just use current _targets. If user hasn't calculated, they might be defaults.
+                // We should probably update _targets from inputs here.
+                // Compute() already does parsing and updates _targets if valid.
+                
+                _analysisWindow.SetContext(_targets.LaunchBody, _targets.TargetInclinationDegrees, _targets.LaunchLatitudeDegrees);
+                _analysisWindow.Visible = !_analysisWindow.Visible;
+            }
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(4);
             if (GUILayout.Button(Loc("#LOC_OPC_Reset"), _styleManager.ButtonStyle, GUILayout.Height(32)))
@@ -1171,6 +1196,13 @@ namespace OrbitalPayloadCalculator.UI
             _vesselService.TreatCargoBayAsFairing = _settings.TreatCargoBayAsFairing;
             _lastStats = _vesselService.ReadCurrentStats();
             _lastResult = PayloadCalculator.Compute(_lastStats, _targets, _lossConfig);
+            
+            // Sync with analysis window if visible
+            if (_analysisWindow.Visible)
+            {
+                _analysisWindow.SetContext(_targets.LaunchBody, _targets.TargetInclinationDegrees, _targets.LaunchLatitudeDegrees);
+                // SetContext will trigger RunAnalysis inside AnalysisWindow if visible
+            }
         }
 
         private void ApplyGuiSettings()
