@@ -72,9 +72,16 @@ namespace OrbitalPayloadCalculator.UI
 
         public void SetContext(CelestialBody body, double inclination, double latitude)
         {
+            bool bodyChanged = _body != body;
             _body = body;
             _inclination = inclination;
             _latitude = latitude;
+            
+            if (bodyChanged)
+            {
+                double defaultAltMeters = OrbitTargets.GetDefaultOrbitAltitudeMeters(body);
+                _minAltInput = (defaultAltMeters / 1000.0).ToString("G", System.Globalization.CultureInfo.InvariantCulture);
+            }
             
             // If window is visible and we have data, auto-refresh
             if (_visible && _hasData)

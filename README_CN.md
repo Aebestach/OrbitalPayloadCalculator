@@ -34,7 +34,7 @@
 
 
 <div align="center">
-    <img src="https://i.imgur.com/vLPrqJE.png" alt="UI Screenshot"/>
+    <img src="https://i.imgur.com/jTYMK69.png" alt="UI Screenshot"/>
 </div>
 
 
@@ -93,10 +93,10 @@
    将载荷放在一侧（不影响火箭计算），直接计算火箭自身的 Delta-V，从而直接得到运输能力。
 
 <p align="center">
-  <img src="https://i.imgur.com/ZbtSU3o.jpg" alt="融合载荷法" width="1000"/><br/>融合载荷法
+  <img src="https://i.imgur.com/RafLl9H.jpg" alt="融合载荷法" width="1000"/><br/>融合载荷法
 </p>
 <p align="center">
-  <img src="https://i.imgur.com/IhsxXNS.jpg" alt="纯火箭法" width="1000"/><br/>纯火箭法
+  <img src="https://i.imgur.com/xnRWbp3.jpg" alt="纯火箭法" width="1000"/><br/>纯火箭法
 </p>
 
 ## 注意事项
