@@ -33,7 +33,7 @@ From now on, your rockets won't be ***almost there*** or ***overflowing with fue
 It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that are Landed or PreLaunch).
 
 <div align="center">
-    <img src="https://i.imgur.com/vLPrqJE.jpg" alt="UI Screenshot"/>
+    <img src="https://i.imgur.com/jTYMK69.jpg" alt="UI Screenshot"/>
 </div>
 
 
@@ -92,10 +92,10 @@ It works in both the **Editor (VAB/SPH)** and in **Flight** (for vessels that ar
    Sets the payload aside (does not affect rocket calculation) and calculates the rocket's own Delta-V directly to determine transport capacity.
 
 <p align="center">
-  <img src="https://i.imgur.com/ZbtSU3o.jpg" alt="Incorporate Payload" width="1000"/><br/>Incorporate Payload
+  <img src="https://i.imgur.com/RafLl9H.jpg" alt="Incorporate Payload" width="1000"/><br/>Incorporate Payload
 </p>
 <p align="center">
-  <img src="https://i.imgur.com/IhsxXNS.jpg" alt="Pure Rocket" width="1000"/><br/>Pure Rocket
+  <img src="https://i.imgur.com/xnRWbp3.jpg" alt="Pure Rocket" width="1000"/><br/>Pure Rocket
 </p>
 
 ## Notes
