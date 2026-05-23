@@ -366,7 +366,9 @@ namespace OrbitalPayloadCalculator.Services
                 var sourceId = part.GetInstanceID();
                 if (!flowGraph.TryGetValue(sourceId, out var targets) || targets == null || targets.Count == 0)
                     continue;
-                if (!stageMap.TryGetValue(part.inverseStage, out var sourceStage))
+                if (!partIdToStageNum.TryGetValue(sourceId, out var sourceStageNum))
+                    continue;
+                if (!stageMap.TryGetValue(sourceStageNum, out var sourceStage))
                     continue;
                 double partPropMass = 0d;
                 var partPropByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
@@ -471,6 +473,277 @@ namespace OrbitalPayloadCalculator.Services
             public EngineRole Role = EngineRole.Main;
         }
 
+        private static int GetEffectiveStageNumber(Part part, Dictionary<int, int> stageRemaps)
+        {
+            if (part == null) return -1;
+            if (stageRemaps != null && stageRemaps.TryGetValue(part.GetInstanceID(), out var stageNum))
+                return stageNum;
+            return part.inverseStage;
+        }
+
+        private static void GetPartMasses(Part part, out double dryMassTons, out double wetMassTons)
+        {
+            dryMassTons = part != null ? (double)part.mass : 0d;
+            var resourceMass = 0d;
+            if (part?.Resources != null)
+            {
+                foreach (PartResource res in part.Resources)
+                {
+                    if (res?.info == null) continue;
+                    resourceMass += res.amount * res.info.density;
+                }
+            }
+            wetMassTons = dryMassTons + resourceMass;
+        }
+
+        private static void ApplyStageRemapsToMasses(IList<Part> parts, Dictionary<int, StageInfo> stageMap, Dictionary<int, int> stageRemaps)
+        {
+            if (parts == null || stageMap == null || stageRemaps == null || stageRemaps.Count == 0)
+                return;
+
+            foreach (var part in parts)
+            {
+                if (part == null || IsExcludedFromCalculation(part)) continue;
+                var partId = part.GetInstanceID();
+                if (!stageRemaps.TryGetValue(partId, out var targetStageNum)) continue;
+                if (targetStageNum == part.inverseStage) continue;
+
+                GetPartMasses(part, out var dryMass, out var wetMass);
+                if (stageMap.TryGetValue(part.inverseStage, out var sourceStage))
+                {
+                    sourceStage.WetMassTons = Math.Max(0d, sourceStage.WetMassTons - wetMass);
+                    sourceStage.DryMassTons = Math.Max(0d, sourceStage.DryMassTons - dryMass);
+                }
+
+                if (!stageMap.TryGetValue(targetStageNum, out var targetStage))
+                {
+                    targetStage = new StageInfo { StageNumber = targetStageNum };
+                    stageMap[targetStageNum] = targetStage;
+                }
+                targetStage.WetMassTons += wetMass;
+                targetStage.DryMassTons += dryMass;
+            }
+        }
+
+        private static void ApplyStageRemapsToEngines(List<EngineBuildRecord> engineRecords, Dictionary<int, int> stageRemaps)
+        {
+            if (engineRecords == null || stageRemaps == null || stageRemaps.Count == 0)
+                return;
+
+            foreach (var record in engineRecords)
+            {
+                if (record?.Part == null) continue;
+                if (stageRemaps.TryGetValue(record.Part.GetInstanceID(), out var stageNum))
+                    record.StageNumber = stageNum;
+            }
+        }
+
+        /// <summary>
+        /// KSP can put an upper-stage engine and the stack decoupler below it in the same staging event.
+        /// Parts below that decoupler may inherit the same inverseStage, so remap those same-stage parts
+        /// to the next dV engine stage on the separated stack.
+        /// </summary>
+        private static Dictionary<int, int> BuildBottomNodeDecouplerStageRemaps(IList<Part> parts, List<EngineBuildRecord> engineRecords)
+        {
+            var remaps = new Dictionary<int, int>();
+            if (parts == null || engineRecords == null || engineRecords.Count == 0)
+                return remaps;
+
+            foreach (var decoupler in parts)
+            {
+                if (decoupler == null || IsExcludedFromCalculation(decoupler)) continue;
+                if (!IsDecouplerPart(decoupler)) continue;
+
+                var enginePart = FindSameStageEngineWithBottomNodeDecoupler(decoupler, engineRecords);
+                var releasedIds = enginePart != null
+                    ? CollectPartsAwayFromEngineSide(decoupler, enginePart)
+                    : CollectPartsOnNextEngineSide(decoupler, engineRecords);
+                var targetStage = FindNextDvEngineStageInReleasedSet(releasedIds, decoupler.inverseStage, engineRecords);
+                if (targetStage < 0 && enginePart != null)
+                {
+                    releasedIds = CollectPartsOnNextEngineSide(decoupler, engineRecords);
+                    targetStage = FindNextDvEngineStageInReleasedSet(releasedIds, decoupler.inverseStage, engineRecords);
+                }
+                if (targetStage < 0 || targetStage == decoupler.inverseStage) continue;
+
+                remaps[decoupler.GetInstanceID()] = targetStage;
+                foreach (var part in parts)
+                {
+                    if (part == null || IsExcludedFromCalculation(part)) continue;
+                    var partId = part.GetInstanceID();
+                    if (!releasedIds.Contains(partId)) continue;
+                    if (part.inverseStage != decoupler.inverseStage) continue;
+                    remaps[partId] = targetStage;
+                }
+            }
+
+            return remaps;
+        }
+
+        private static HashSet<int> CollectPartsOnNextEngineSide(Part decoupler, List<EngineBuildRecord> engineRecords)
+        {
+            var empty = new HashSet<int>();
+            if (decoupler == null || engineRecords == null) return empty;
+
+            var sameStageEngineIds = new HashSet<int>();
+            foreach (var record in engineRecords)
+            {
+                if (record?.Part == null) continue;
+                if (!PayloadCalculator.IsDvParticipatingRole(record.Role)) continue;
+                if (record.StageNumber == decoupler.inverseStage)
+                    sameStageEngineIds.Add(record.Part.GetInstanceID());
+            }
+            if (sameStageEngineIds.Count == 0)
+                return empty;
+
+            HashSet<int> bestReleased = null;
+            var bestTargetStage = -1;
+            foreach (var connected in GetConnectedParts(decoupler))
+            {
+                if (connected == null) continue;
+                var component = new HashSet<int>();
+                CollectConnectedComponent(connected, component, decoupler, null);
+                if (component.Count == 0) continue;
+
+                var containsSameStageEngine = false;
+                foreach (var engineId in sameStageEngineIds)
+                {
+                    if (component.Contains(engineId))
+                    {
+                        containsSameStageEngine = true;
+                        break;
+                    }
+                }
+
+                var targetStage = FindNextDvEngineStageInReleasedSet(component, decoupler.inverseStage, engineRecords);
+                if (targetStage < 0)
+                    continue;
+
+                // A stack separator sits between the upper stage engine and the lower stack.
+                // Pick the side with the earlier-firing engine only when the same-stage engine is on the other side.
+                if (containsSameStageEngine)
+                    continue;
+
+                if (bestReleased == null || targetStage < bestTargetStage)
+                {
+                    bestReleased = component;
+                    bestTargetStage = targetStage;
+                }
+            }
+
+            return bestReleased ?? empty;
+        }
+
+        private static Part FindSameStageEngineWithBottomNodeDecoupler(Part decoupler, List<EngineBuildRecord> engineRecords)
+        {
+            if (decoupler == null || engineRecords == null) return null;
+            foreach (var record in engineRecords)
+            {
+                if (record?.Part == null) continue;
+                if (record.StageNumber != decoupler.inverseStage) continue;
+                if (!PayloadCalculator.IsDvParticipatingRole(record.Role)) continue;
+                if (IsAttachedToBottomNode(record.Part, decoupler))
+                    return record.Part;
+            }
+            return null;
+        }
+
+        private static int FindNextDvEngineStageInReleasedSet(HashSet<int> releasedIds, int decouplerStage, List<EngineBuildRecord> engineRecords)
+        {
+            var bestStage = -1;
+            if (releasedIds == null || engineRecords == null) return bestStage;
+
+            foreach (var record in engineRecords)
+            {
+                if (record?.Part == null) continue;
+                if (!PayloadCalculator.IsDvParticipatingRole(record.Role)) continue;
+                if (record.StageNumber <= decouplerStage) continue;
+                if (!releasedIds.Contains(record.Part.GetInstanceID())) continue;
+                if (bestStage < 0 || record.StageNumber < bestStage)
+                    bestStage = record.StageNumber;
+            }
+
+            return bestStage;
+        }
+
+        private static HashSet<int> CollectPartsAwayFromEngineSide(Part decoupler, Part enginePart)
+        {
+            var releasedIds = new HashSet<int>();
+            if (decoupler == null || enginePart == null) return releasedIds;
+
+            foreach (var connected in GetConnectedParts(decoupler))
+            {
+                if (connected == null || connected == enginePart) continue;
+                CollectConnectedComponent(connected, releasedIds, decoupler, enginePart);
+            }
+            releasedIds.Remove(decoupler.GetInstanceID());
+            releasedIds.Remove(enginePart.GetInstanceID());
+            return releasedIds;
+        }
+
+        private static void CollectConnectedComponent(Part start, HashSet<int> outIds, Part blockedA, Part blockedB)
+        {
+            if (start == null || outIds == null) return;
+
+            var blockedIds = new HashSet<int>();
+            if (blockedA != null) blockedIds.Add(blockedA.GetInstanceID());
+            if (blockedB != null) blockedIds.Add(blockedB.GetInstanceID());
+
+            var queue = new Queue<Part>();
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var part = queue.Dequeue();
+                if (part == null) continue;
+                var partId = part.GetInstanceID();
+                if (blockedIds.Contains(partId) || !outIds.Add(partId)) continue;
+
+                foreach (var next in GetConnectedParts(part))
+                {
+                    if (next == null) continue;
+                    var nextId = next.GetInstanceID();
+                    if (blockedIds.Contains(nextId) || outIds.Contains(nextId)) continue;
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        private static IEnumerable<Part> GetConnectedParts(Part part)
+        {
+            if (part == null) yield break;
+            if (part.parent != null)
+                yield return part.parent;
+            if (part.children != null)
+            {
+                foreach (Part child in part.children)
+                    if (child != null) yield return child;
+            }
+            if (part.attachNodes != null)
+            {
+                foreach (var node in part.attachNodes)
+                    if (node?.attachedPart != null) yield return node.attachedPart;
+            }
+        }
+
+        private static bool IsDecouplerPart(Part part)
+        {
+            return part?.Modules != null
+                && (part.Modules.Contains("ModuleDecouple") || part.Modules.Contains("ModuleAnchoredDecoupler"));
+        }
+
+        private static bool IsAttachedToBottomNode(Part enginePart, Part attachedPart)
+        {
+            if (enginePart?.attachNodes == null || attachedPart == null) return false;
+            foreach (var node in enginePart.attachNodes)
+            {
+                if (node?.attachedPart != attachedPart) continue;
+                var id = node.id ?? string.Empty;
+                if (id.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
         private static VesselStats BuildStatsFromParts(string vesselName, string vesselKey, IList<Part> parts, bool fromFlight, int stageCount, bool treatCargoBayAsFairing = false)
         {
             var stats = new VesselStats
@@ -536,11 +809,15 @@ namespace OrbitalPayloadCalculator.Services
 
             ClassifyEngines(engineRecords);
 
+            var stageRemaps = BuildBottomNodeDecouplerStageRemaps(parts, engineRecords);
+            ApplyStageRemapsToMasses(parts, stageMap, stageRemaps);
+            ApplyStageRemapsToEngines(engineRecords, stageRemaps);
+
             var partIdToStageNum = new Dictionary<int, int>();
             foreach (var part in parts)
             {
                 if (part == null || IsExcludedFromCalculation(part)) continue;
-                partIdToStageNum[part.GetInstanceID()] = part.inverseStage;
+                partIdToStageNum[part.GetInstanceID()] = GetEffectiveStageNumber(part, stageRemaps);
             }
 
             var fuelLineEdges = new List<FuelLineEdge>();
@@ -610,7 +887,7 @@ namespace OrbitalPayloadCalculator.Services
             foreach (var part in parts)
             {
                 if (part == null || IsExcludedFromCalculation(part)) continue;
-                if (!stageMap.TryGetValue(part.inverseStage, out var si)) continue;
+                if (!stageMap.TryGetValue(GetEffectiveStageNumber(part, stageRemaps), out var si)) continue;
 
                 foreach (PartResource res in part.Resources)
                 {
@@ -632,7 +909,7 @@ namespace OrbitalPayloadCalculator.Services
                 si.HasEngines = si.Engines.Count > 0;
             }
             RedistributePropellant(stageMap);
-            BuildFairingMasses(parts, stageMap, treatCargoBayAsFairing);
+            BuildFairingMasses(parts, stageMap, treatCargoBayAsFairing, stageRemaps);
 
             foreach (var si in stageMap.Values)
             {
@@ -675,7 +952,7 @@ namespace OrbitalPayloadCalculator.Services
             var fuelLineSourcePartIds = new HashSet<int>();
             foreach (var e in fuelLineEdges)
                 fuelLineSourcePartIds.Add(e.SourcePartId);
-            BuildSeparationGroups(parts, stageMap, liquidDvPropNames, fuelLineSourcePartIds);
+            BuildSeparationGroups(parts, stageMap, liquidDvPropNames, fuelLineSourcePartIds, stageRemaps);
 
             foreach (var si in stageList)
             {
@@ -961,7 +1238,7 @@ namespace OrbitalPayloadCalculator.Services
         /// Identifies fairing parts (jettisoned at staging): stock, Procedural Fairings mod, cargo bays.
         /// Uses part.inverseStage as jettison stage (when that stage fires, fairing is released).
         /// </summary>
-        private static void BuildFairingMasses(IList<Part> parts, Dictionary<int, StageInfo> stageMap, bool treatCargoBayAsFairing = false)
+        private static void BuildFairingMasses(IList<Part> parts, Dictionary<int, StageInfo> stageMap, bool treatCargoBayAsFairing = false, Dictionary<int, int> stageRemaps = null)
         {
             if (parts == null || stageMap == null) return;
 
@@ -969,7 +1246,7 @@ namespace OrbitalPayloadCalculator.Services
             {
                 if (part == null || IsExcludedFromCalculation(part)) continue;
                 if (!IsFairingPart(part, treatCargoBayAsFairing)) continue;
-                if (!stageMap.TryGetValue(part.inverseStage, out var si)) continue;
+                if (!stageMap.TryGetValue(GetEffectiveStageNumber(part, stageRemaps), out var si)) continue;
 
                 double partMass = (double)part.mass;
                 if (part.Resources != null)
@@ -1010,7 +1287,7 @@ namespace OrbitalPayloadCalculator.Services
         /// When a separation group contains any fuel line source (part feeding core via duct), the booster is
         /// empty at separation—all its fuel was drained to the core. Set GroupLiquidPropellantTons = 0 for such groups.
         /// </summary>
-        private static void BuildSeparationGroups(IList<Part> parts, Dictionary<int, StageInfo> stageMap, HashSet<string> liquidPropNames, HashSet<int> fuelLineSourcePartIds = null)
+        private static void BuildSeparationGroups(IList<Part> parts, Dictionary<int, StageInfo> stageMap, HashSet<string> liquidPropNames, HashSet<int> fuelLineSourcePartIds = null, Dictionary<int, int> stageRemaps = null)
         {
             if (parts == null || parts.Count == 0 || stageMap == null) return;
 
@@ -1036,6 +1313,8 @@ namespace OrbitalPayloadCalculator.Services
                     if (part == null || IsExcludedFromCalculation(part)) continue;
                     if (part.inverseStage != st) continue;
                     if (!part.Modules.Contains("ModuleDecouple") && !part.Modules.Contains("ModuleAnchoredDecoupler"))
+                        continue;
+                    if (stageRemaps != null && stageRemaps.ContainsKey(part.GetInstanceID()))
                         continue;
                     decouplers.Add(part);
                 }
