@@ -1,81 +1,57 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{55AB96CD-3577-4530-9E33-C867C3B9905E}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>OrbitalPayloadCalculator</RootNamespace>
+    <Version>2.2.1</Version>
+    <FileVersion>$(Version)</FileVersion>
     <AssemblyName>OrbitalPayloadCalculator</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <Deterministic>true</Deterministic>
+    <RootNamespace>OrbitalPayloadCalculator</RootNamespace>
+    <TargetFramework>net481</TargetFramework>
+
+    <Description>OrbitalPayloadCalculator is a utility mod for Kerbal Space Program designed to help players calculate rocket payload capacity for various target orbits.</Description>
+    <Product>OrbitalPayloadCalculator</Product>
+
+    <KSPBT_ModRoot>$(ProjectRootDir)GameData\$(AssemblyName)</KSPBT_ModRoot>
+    <KSPBT_ModPluginFolder>Plugin</KSPBT_ModPluginFolder>
+
+    <LangVersion>latest</LangVersion>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+
+  <PropertyGroup Condition=" '$(KSPBT_ModVersion)' != '' ">
+    <Version>$(KSPBT_ModVersion)</Version>
+    <FileVersion>$(Version)</FileVersion>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>none</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>..\GameData\OrbitalPayloadCalculator\Plugin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Compile Include="Calculation\LossModel.cs" />
-    <Compile Include="Calculation\OrbitTargets.cs" />
-    <Compile Include="Calculation\PayloadCalculator.cs" />
-    <Compile Include="OrbitalPayloadCalculatorPlugin.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Services\VesselSourceService.cs" />
-    <Compile Include="Settings\PluginSettings.cs" />
-    <Compile Include="UI\AnalysisWindow.cs" />
-    <Compile Include="UI\CalculatorWindow.cs" />
-    <Compile Include="UI\UIStyleManager.cs" />
+    <PackageReference Include="KSPBuildTools" Version="1.1.1" />
   </ItemGroup>
+
   <ItemGroup>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\Assembly-CSharp.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ClickThroughBlocker">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\ClickThroughBlocker.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="UnityEngine">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.AnimationModule.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.CoreModule.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.IMGUIModule.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.InputLegacyModule.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>..\..\00. KSP DEVELOP PLUGINS\UnityEngine.TextRenderingModule.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
+    <ModReference Include="ClickThroughBlocker">
+      <DLLPath>GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll</DLLPath>
+      <CKANIdentifier>ClickThroughBlocker</CKANIdentifier>
+      <KSPAssemblyVersion>1.0</KSPAssemblyVersion>
+    </ModReference>
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <ItemGroup>
+    <KSPVersionFile Include=".">
+      <Destination>$(KSPBT_ModRoot)/$(AssemblyName).version</Destination>
+      <URL>https://github.com/Aebestach/OrbitalPayloadCalculator/releases/latest/download/OrbitalPayloadCalculator.version</URL>
+      <Download>https://github.com/Aebestach/OrbitalPayloadCalculator/releases/latest</Download>
+      <KSP_Version>1.12.5</KSP_Version>
+      <KSP_Version_Min>1.12.0</KSP_Version_Min>
+      <KSP_Version_Max>1.12.99</KSP_Version_Max>
+    </KSPVersionFile>
+  </ItemGroup>
+
+  <Target Name="DeployGameDataToKsp" AfterTargets="KSPBT_CopyDLLsToPluginFolder" Condition=" '$(KSPBT_GameRoot)' != '' ">
+    <PropertyGroup>
+      <_KspModDeployDir>$(KSPBT_GameRoot)/GameData/$(AssemblyName)</_KspModDeployDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_ModDeployFiles Include="$(KSPBT_ModRoot)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModDeployFiles)" DestinationFolder="$(_KspModDeployDir)/%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Message Text="Deployed GameData to $(_KspModDeployDir)" Importance="high" />
+  </Target>
 </Project>
