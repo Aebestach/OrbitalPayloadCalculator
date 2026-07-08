@@ -29,6 +29,7 @@ namespace OrbitalPayloadCalculator.UI
         private bool _hasData = false;
         private float _maxPayload = 0f;
         private float _minPayload = 0f;
+        private float _lastUiScaleFactor = -1f;
 
         // Graph
         private Texture2D _lineTexture;
@@ -51,7 +52,8 @@ namespace OrbitalPayloadCalculator.UI
                         // Reset or init position if needed
                         if (_windowRect.width < 10)
                         {
-                            _windowRect = new Rect(Screen.width * 0.5f - 450, Screen.height * 0.5f - 250, 900, 500);
+                            var screen = UIScale.GuiScreenSize();
+                            _windowRect = new Rect(screen.x * 0.5f - 450, screen.y * 0.5f - 250, 900, 500);
                         }
                     }
                 }
@@ -63,7 +65,8 @@ namespace OrbitalPayloadCalculator.UI
             _styleManager = styleManager;
             _vesselService = vesselService;
             _lossConfig = lossConfig;
-            _windowRect = new Rect(Screen.width * 0.5f - 450, Screen.height * 0.5f - 250, 900, 500);
+            var initScreen = UIScale.GuiScreenSize();
+            _windowRect = new Rect(initScreen.x * 0.5f - 450, initScreen.y * 0.5f - 250, 900, 500);
             
             _lineTexture = new Texture2D(1, 1);
             _lineTexture.SetPixel(0, 0, Color.white);
@@ -93,7 +96,28 @@ namespace OrbitalPayloadCalculator.UI
         public void OnGUI()
         {
             if (!_visible) return;
+            float uiScale = UIScale.Factor;
+            if (!Mathf.Approximately(uiScale, _lastUiScaleFactor))
+            {
+                if (_lastUiScaleFactor > 0f)
+                    OnUiScaleChanged(_lastUiScaleFactor, uiScale);
+                _lastUiScaleFactor = uiScale;
+                _windowRect.height = 500f;
+            }
             _windowRect = ClickThruBlocker.GUILayoutWindow(WindowId, _windowRect, DrawWindow, Localizer.Format("#LOC_OPC_AnalysisTitle"), _styleManager.WindowStyle);
+            _windowRect = UIScale.ClampToGuiScreen(_windowRect);
+        }
+
+        public void OnUiScaleChanged(float oldScale, float newScale)
+        {
+            if (oldScale <= 0f || newScale <= 0f)
+                return;
+
+            float ratio = oldScale / newScale;
+            _windowRect.x *= ratio;
+            _windowRect.y *= ratio;
+            _windowRect = UIScale.ClampToGuiScreen(_windowRect);
+            _lastUiScaleFactor = newScale;
         }
 
         private void DrawWindow(int id)
@@ -102,41 +126,7 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.Space(6);
             
             // Settings Row
-            GUILayout.BeginHorizontal(_styleManager.PanelStyle, GUILayout.Height(32));
-            
-            GUILayout.BeginHorizontal(GUILayout.Width(240));
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(Localizer.Format("#LOC_OPC_MinAlt") + " (km):", _styleManager.LabelStyle, GUILayout.ExpandWidth(true));
-            _minAltInput = GUILayout.TextField(_minAltInput, _styleManager.FieldStyle, GUILayout.Width(60));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUILayout.Space(10);
-            
-            GUILayout.BeginHorizontal(GUILayout.Width(240));
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(Localizer.Format("#LOC_OPC_MaxAlt") + " (km):", _styleManager.LabelStyle, GUILayout.ExpandWidth(true));
-            _maxAltInput = GUILayout.TextField(_maxAltInput, _styleManager.FieldStyle, GUILayout.Width(60));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUILayout.Space(10);
-
-            GUILayout.BeginHorizontal(GUILayout.Width(150));
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(Localizer.Format("#LOC_OPC_Steps") + ":", _styleManager.LabelStyle, GUILayout.ExpandWidth(true));
-            _stepsInput = GUILayout.TextField(_stepsInput, _styleManager.FieldStyle, GUILayout.Width(40));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUILayout.FlexibleSpace();
-            
-            if (GUILayout.Button(Localizer.Format("#LOC_OPC_Analyze"), _styleManager.ButtonStyle, GUILayout.Width(100), GUILayout.Height(28)))
-            {
-                RunAnalysis();
-            }
-            
-            GUILayout.EndHorizontal();
+            DrawSettingsRow();
 
             // Graph Area
             GUILayout.Space(20);
@@ -152,7 +142,7 @@ namespace OrbitalPayloadCalculator.UI
             // For simplicity, we draw tooltip inside DrawGraph during Repaint, assuming mouse position is valid.
 
             GUILayout.Space(10);
-            if (GUILayout.Button(Localizer.Format("#LOC_OPC_Close"), _styleManager.ButtonStyle))
+            if (GUILayout.Button(Localizer.Format("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(36f), GUILayout.ExpandWidth(true)))
             {
                 Visible = false;
             }
@@ -214,137 +204,292 @@ namespace OrbitalPayloadCalculator.UI
             _hasData = true;
         }
 
+        private void DrawSettingsRow()
+        {
+            var labelW = 130f;
+            var fieldW = 60f;
+            var rowH = 36f;
+
+            GUILayout.BeginHorizontal(_styleManager.PanelStyle, GUILayout.ExpandWidth(true));
+            DrawSettingField(Localizer.Format("#LOC_OPC_MinAlt") + " (km):", ref _minAltInput, labelW, fieldW, rowH);
+            GUILayout.Space(16);
+            DrawSettingField(Localizer.Format("#LOC_OPC_MaxAlt") + " (km):", ref _maxAltInput, labelW, fieldW, rowH);
+            GUILayout.Space(16);
+            DrawSettingField(Localizer.Format("#LOC_OPC_Steps") + ":", ref _stepsInput, 100f, 40f, rowH);
+            GUILayout.FlexibleSpace();
+            var analyzeLabel = Localizer.Format("#LOC_OPC_Analyze");
+            if (GUILayout.Button(analyzeLabel, _styleManager.ButtonStyle, GUILayout.Width(ButtonWidth(analyzeLabel, 100f)), GUILayout.Height(rowH)))
+                RunAnalysis();
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawSettingField(string label, ref string input, float labelWidth, float fieldWidth, float rowHeight)
+        {
+            GUILayout.BeginHorizontal(GUILayout.Width(labelWidth + fieldWidth + 8f), GUILayout.Height(rowHeight));
+            GUILayout.Label(label, _styleManager.LabelStyleRow, GUILayout.Width(labelWidth), GUILayout.Height(rowHeight));
+            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(fieldWidth), GUILayout.Height(rowHeight));
+            GUILayout.EndHorizontal();
+        }
+
+        private float ButtonWidth(string label, float minWidth)
+        {
+            var style = _styleManager.ButtonStyle ?? GUI.skin.button;
+            var width = style.CalcSize(new GUIContent(label ?? string.Empty)).x + 28f;
+            return Mathf.Ceil(Mathf.Max(minWidth, width));
+        }
+
         private void DrawGraph(Rect rect)
         {
-            // Background
-            GUI.Box(rect, "", _styleManager.PanelStyle);
+            GUI.BeginGroup(rect);
+            var local = new Rect(0f, 0f, rect.width, rect.height);
+
+            GUI.Box(local, "", _styleManager.PanelStyle);
             
             if (!_hasData || _dataPoints.Count < 2)
             {
-                GUI.Label(new Rect(rect.center.x - 50, rect.center.y - 10, 100, 20), "No Data", _styleManager.LabelStyle);
+                GUI.Label(new Rect(local.center.x - 50f, local.center.y - 10f, 100f, 20f), "No Data", _styleManager.LabelStyle);
+                GUI.EndGroup();
                 return;
             }
 
-            // Margins
-            float leftM = 50;
-            float bottomM = 40;
-            float topM = 30;
-            float rightM = 20;
+            const float leftM = 50f;
+            const float bottomM = 40f;
+            const float topM = 36f;
+            const float rightM = 20f;
             
-            float graphW = rect.width - leftM - rightM;
-            float graphH = rect.height - bottomM - topM;
+            var graphW = local.width - leftM - rightM;
+            var graphH = local.height - topM - bottomM;
             
-            float xMin = _dataPoints[0].x;
-            float xMax = _dataPoints[_dataPoints.Count - 1].x;
-            float yMin = _minPayload;
-            float yMax = _maxPayload * 1.1f; // Add 10% headroom
+            var xMin = _dataPoints[0].x;
+            var xMax = _dataPoints[_dataPoints.Count - 1].x;
+            var yMin = _minPayload;
+            var yRange = Mathf.Max(0.001f, _maxPayload - yMin);
+            var yMax = _maxPayload + yRange * 0.12f;
             
             if (yMax <= yMin) yMax = yMin + 1f;
 
-            // Draw Axes
-            DrawLine(new Vector2(rect.x + leftM, rect.y + topM), new Vector2(rect.x + leftM, rect.y + rect.height - bottomM), Color.gray, 2); // Y Axis
-            DrawLine(new Vector2(rect.x + leftM, rect.y + rect.height - bottomM), new Vector2(rect.x + rect.width - rightM, rect.y + rect.height - bottomM), Color.gray, 2); // X Axis
+            var plotRect = new Rect(leftM, topM, graphW, graphH);
+            var plotBottom = topM + graphH;
 
-            // Draw Grid & Labels
-            // Y Axis Labels (Payload)
-            int ySteps = 5;
-            for (int i = 0; i <= ySteps; i++)
+            DrawLine(new Vector2(leftM, topM), new Vector2(leftM, plotBottom), Color.gray, 2f);
+            DrawLine(new Vector2(leftM, plotBottom), new Vector2(local.width - rightM, plotBottom), Color.gray, 2f);
+
+            const int ySteps = 5;
+            for (var i = 0; i <= ySteps; i++)
             {
-                float t = i / (float)ySteps;
-                float val = Mathf.Lerp(yMin, yMax, t);
-                float yPos = rect.y + rect.height - bottomM - (t * graphH);
+                var t = i / (float)ySteps;
+                var val = Mathf.Lerp(yMin, yMax, t);
+                var yPos = plotBottom - t * graphH;
                 
-                GUI.Label(new Rect(rect.x, yPos - 10, leftM - 5, 20), val.ToString("F1"), _styleManager.SmallLabelStyle);
-                DrawLine(new Vector2(rect.x + leftM, yPos), new Vector2(rect.x + rect.width - rightM, yPos), new Color(1,1,1,0.1f), 1);
+                GUI.Label(new Rect(0f, yPos - 10f, leftM - 5f, 20f), val.ToString("F1"), _styleManager.SmallLabelStyle);
+                DrawLine(new Vector2(leftM, yPos), new Vector2(local.width - rightM, yPos), new Color(1f, 1f, 1f, 0.1f), 1f, plotRect);
             }
 
-            // X Axis Labels (Alt)
-            int xSteps = 5;
-            for (int i = 0; i <= xSteps; i++)
+            const int xSteps = 5;
+            for (var i = 0; i <= xSteps; i++)
             {
-                float t = i / (float)xSteps;
-                float val = Mathf.Lerp(xMin, xMax, t);
-                float xPos = rect.x + leftM + (t * graphW);
+                var t = i / (float)xSteps;
+                var val = Mathf.Lerp(xMin, xMax, t);
+                var xPos = leftM + t * graphW;
                 
-                // Align center
-                GUI.Label(new Rect(xPos - 20, rect.y + rect.height - bottomM + 5, 40, 20), val.ToString("F0"), _styleManager.SmallLabelStyle);
-                DrawLine(new Vector2(xPos, rect.y + topM), new Vector2(xPos, rect.y + rect.height - bottomM), new Color(1,1,1,0.1f), 1);
+                GUI.Label(new Rect(xPos - 20f, plotBottom + 5f, 40f, 20f), val.ToString("F0"), _styleManager.SmallLabelStyle);
+                DrawLine(new Vector2(xPos, topM), new Vector2(xPos, plotBottom), new Color(1f, 1f, 1f, 0.1f), 1f, plotRect);
             }
             
-            // Axis Titles
-            GUI.Label(new Rect(rect.x + leftM + graphW/2 - 50, rect.y + rect.height - 25, 100, 20), Localizer.Format("#LOC_OPC_AltitudeKm"), _styleManager.SmallBoldLabelStyle);
-            GUI.Label(new Rect(rect.x + 5, rect.y + 0, 100, 20), Localizer.Format("#LOC_OPC_PayloadTons"), _styleManager.SmallBoldLabelStyle);
+            var axisLabelStyle = _styleManager.SmallBoldLabelStyle ?? _styleManager.LabelStyleRow;
+            var axisLabelHeight = 24f;
+            GUI.Label(new Rect(leftM + graphW * 0.5f - 50f, local.height - 28f, 100f, axisLabelHeight), Localizer.Format("#LOC_OPC_AltitudeKm"), axisLabelStyle);
+            GUI.Label(new Rect(5f, 8f, leftM - 8f, axisLabelHeight), Localizer.Format("#LOC_OPC_PayloadTons"), axisLabelStyle);
 
-            // Draw Data Line
+            GUI.BeginGroup(plotRect);
+            var plotLocal = new Rect(0f, 0f, plotRect.width, plotRect.height);
             Vector2? prevPos = null;
-            for (int i = 0; i < _dataPoints.Count; i++)
+            for (var i = 0; i < _dataPoints.Count; i++)
             {
                 var pt = _dataPoints[i];
-                float xNorm = (pt.x - xMin) / (xMax - xMin);
-                float yNorm = (pt.y - yMin) / (yMax - yMin);
+                var xNorm = (pt.x - xMin) / (xMax - xMin);
+                var yNorm = (pt.y - yMin) / (yMax - yMin);
                 
-                Vector2 screenPos = new Vector2(
-                    rect.x + leftM + xNorm * graphW,
-                    rect.y + rect.height - bottomM - yNorm * graphH
+                var screenPos = new Vector2(
+                    xNorm * plotLocal.width,
+                    plotLocal.height - yNorm * plotLocal.height
                 );
                 
                 if (prevPos.HasValue)
-                {
-                    DrawLine(prevPos.Value, screenPos, Color.green, 2);
-                }
+                    DrawLine(prevPos.Value, screenPos, Color.green, 2f);
                 
-                // Draw point
-                GUI.DrawTexture(new Rect(screenPos.x - 2, screenPos.y - 2, 4, 4), _lineTexture);
-                
+                DrawColoredTexture(new Rect(screenPos.x - 2f, screenPos.y - 2f, 4f, 4f), Color.green);
                 prevPos = screenPos;
             }
-            
-            // Tooltip (Simple)
-            Vector2 mouse = Event.current.mousePosition;
-            if (rect.Contains(mouse) && _hasData)
+            GUI.EndGroup();
+
+            var mouse = Event.current.mousePosition - rect.position;
+            if (local.Contains(mouse) && _hasData)
             {
-                float mouseXRel = mouse.x - (rect.x + leftM);
-                float t = Mathf.Clamp01(mouseXRel / graphW);
-                float hoverAlt = Mathf.Lerp(xMin, xMax, t);
+                var mouseXRel = mouse.x - leftM;
+                var t = Mathf.Clamp01(mouseXRel / graphW);
                 
-                // Find closest point by distance in array index to avoid search
-                // Index ~ t * (steps - 1)
-                int index = Mathf.RoundToInt(t * (_dataPoints.Count - 1));
+                var index = Mathf.RoundToInt(t * (_dataPoints.Count - 1));
                 index = Mathf.Clamp(index, 0, _dataPoints.Count - 1);
                 var closest = _dataPoints[index];
                 
-                float xNorm = (closest.x - xMin) / (xMax - xMin);
-                float yNorm = (closest.y - yMin) / (yMax - yMin);
-                Vector2 ptPos = new Vector2(
-                    rect.x + leftM + xNorm * graphW,
-                    rect.y + rect.height - bottomM - yNorm * graphH
+                var xNorm = (closest.x - xMin) / (xMax - xMin);
+                var yNorm = (closest.y - yMin) / (yMax - yMin);
+                var ptPos = new Vector2(
+                    leftM + xNorm * graphW,
+                    plotBottom - yNorm * graphH
                 );
                 
-                GUI.DrawTexture(new Rect(ptPos.x - 4, ptPos.y - 4, 8, 8), _lineTexture);
-                
-                // Draw tooltip box
-                Rect tipRect = new Rect(ptPos.x + 10, ptPos.y - 40, 100, 40);
-                // Adjust if off screen
-                if (tipRect.xMax > rect.xMax) tipRect.x -= 120;
-                
-                GUI.Box(tipRect, "", _styleManager.PanelStyle);
-                GUI.Label(tipRect, $"{closest.x:F0} km\n{closest.y:F2} t", _styleManager.SmallBoldLabelStyle);
+                DrawColoredTexture(new Rect(ptPos.x - 4f, ptPos.y - 4f, 8f, 8f), Color.green);
+                DrawGraphTooltip(local, ptPos, closest, topM, plotBottom, leftM);
+            }
+
+            GUI.EndGroup();
+        }
+
+        private void DrawGraphTooltip(Rect graphBounds, Vector2 ptPos, Vector2 closest, float plotTop, float plotBottom, float plotLeft)
+        {
+            var altText = $"{closest.x:F0} km";
+            var payloadText = $"{closest.y:F2} t";
+            var tipStyle = _styleManager.TooltipStyle ?? _styleManager.SmallBoldLabelStyle ?? _styleManager.LabelStyle;
+            const float padX = 14f;
+            const float padY = 10f;
+            const float lineGap = 3f;
+            const float pointGap = 12f;
+            const float edgeMargin = 6f;
+
+            var lineH = tipStyle.lineHeight;
+            var contentW = Mathf.Max(
+                tipStyle.CalcSize(new GUIContent(altText)).x,
+                tipStyle.CalcSize(new GUIContent(payloadText)).x);
+            var tipW = contentW + padX * 2f;
+            var tipH = lineH * 2f + lineGap + padY * 2f;
+
+            var tipRectAbove = new Rect(ptPos.x - tipW * 0.5f, ptPos.y - tipH - pointGap, tipW, tipH);
+            var tipRectBelow = new Rect(ptPos.x - tipW * 0.5f, ptPos.y + pointGap, tipW, tipH);
+
+            var upperThreshold = plotTop + tipH + pointGap + 8f;
+            var preferBelow = ptPos.y <= upperThreshold;
+            var tipRect = preferBelow ? tipRectBelow : tipRectAbove;
+
+            if (tipRect.yMax > plotBottom - edgeMargin)
+                tipRect = tipRectAbove;
+            if (tipRect.yMin < plotTop + edgeMargin)
+                tipRect = tipRectBelow;
+            if (tipRect.yMax > plotBottom - edgeMargin)
+                tipRect.y = plotBottom - edgeMargin - tipH;
+            if (tipRect.yMin < plotTop + edgeMargin)
+                tipRect.y = plotTop + edgeMargin;
+
+            if (tipRect.xMin < plotLeft + edgeMargin)
+                tipRect.x = plotLeft + edgeMargin;
+            if (tipRect.xMax > graphBounds.width - edgeMargin)
+                tipRect.x = graphBounds.width - edgeMargin - tipW;
+
+            GUI.Box(tipRect, GUIContent.none, _styleManager.SectionStyle);
+
+            var lineRect = new Rect(tipRect.x + padX, tipRect.y + padY, contentW, lineH);
+            GUI.Label(lineRect, altText, tipStyle);
+            lineRect.y += lineH + lineGap;
+            GUI.Label(lineRect, payloadText, tipStyle);
+        }
+
+        private void DrawLine(Vector2 start, Vector2 end, Color color, float width, Rect? clipRect = null)
+        {
+            if (clipRect.HasValue)
+            {
+                if (!ClipSegment(ref start, ref end, clipRect.Value))
+                    return;
+            }
+
+            var delta = end - start;
+            var length = delta.magnitude;
+            if (length < 0.01f)
+                return;
+
+            if (Mathf.Abs(delta.y) < 0.01f)
+            {
+                DrawColoredTexture(new Rect(Mathf.Min(start.x, end.x), start.y - width * 0.5f, Mathf.Abs(delta.x), width), color);
+                return;
+            }
+
+            if (Mathf.Abs(delta.x) < 0.01f)
+            {
+                DrawColoredTexture(new Rect(start.x - width * 0.5f, Mathf.Min(start.y, end.y), width, Mathf.Abs(delta.y)), color);
+                return;
+            }
+
+            var stepCount = Mathf.CeilToInt(length / Mathf.Max(1f, width * 0.65f));
+            for (var i = 0; i <= stepCount; i++)
+            {
+                var p = Vector2.Lerp(start, end, i / (float)stepCount);
+                DrawColoredTexture(new Rect(p.x - width * 0.5f, p.y - width * 0.5f, width, width), color);
             }
         }
 
-        private void DrawLine(Vector2 start, Vector2 end, Color color, float width)
+        private void DrawColoredTexture(Rect rect, Color color)
         {
             var savedColor = GUI.color;
-            var savedMatrix = GUI.matrix;
-            
             GUI.color = color;
-            float angle = Mathf.Atan2(end.y - start.y, end.x - start.x) * Mathf.Rad2Deg;
-            
-            GUIUtility.RotateAroundPivot(angle, start);
-            GUI.DrawTexture(new Rect(start.x, start.y - width/2, (end-start).magnitude, width), _lineTexture);
-            
-            GUI.matrix = savedMatrix;
+            GUI.DrawTexture(rect, _lineTexture);
             GUI.color = savedColor;
+        }
+
+        private static bool ClipSegment(ref Vector2 start, ref Vector2 end, Rect clip)
+        {
+            var code0 = ComputeOutCode(start, clip);
+            var code1 = ComputeOutCode(end, clip);
+            while (true)
+            {
+                if ((code0 | code1) == 0)
+                    return true;
+                if ((code0 & code1) != 0)
+                    return false;
+
+                var outCode = code0 != 0 ? code0 : code1;
+                Vector2 p;
+                if ((outCode & 8) != 0)
+                {
+                    p.x = start.x + (end.x - start.x) * (clip.yMax - start.y) / (end.y - start.y);
+                    p.y = clip.yMax;
+                }
+                else if ((outCode & 4) != 0)
+                {
+                    p.x = start.x + (end.x - start.x) * (clip.yMin - start.y) / (end.y - start.y);
+                    p.y = clip.yMin;
+                }
+                else if ((outCode & 2) != 0)
+                {
+                    p.y = start.y + (end.y - start.y) * (clip.xMax - start.x) / (end.x - start.x);
+                    p.x = clip.xMax;
+                }
+                else
+                {
+                    p.y = start.y + (end.y - start.y) * (clip.xMin - start.x) / (end.x - start.x);
+                    p.x = clip.xMin;
+                }
+
+                if (outCode == code0)
+                {
+                    start = p;
+                    code0 = ComputeOutCode(start, clip);
+                }
+                else
+                {
+                    end = p;
+                    code1 = ComputeOutCode(end, clip);
+                }
+            }
+        }
+
+        private static int ComputeOutCode(Vector2 p, Rect clip)
+        {
+            var code = 0;
+            if (p.x < clip.xMin) code |= 1;
+            if (p.x > clip.xMax) code |= 2;
+            if (p.y < clip.yMin) code |= 4;
+            if (p.y > clip.yMax) code |= 8;
+            return code;
         }
 
         public void Dispose()

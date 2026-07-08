@@ -21,8 +21,10 @@ namespace OrbitalPayloadCalculator.UI
         private const int DvDetailsPopupId = 940206;
         private const int EngineRolePopupId = 940207;
         private const int EngineRoleSelectPopupId = 940208;
+        private const int FontSize = 20;
+        private const float LeftPanelWidth = 400f;
+        private const float RightPanelWidth = 420f;
 
-        private readonly PluginSettings _settings;
         private readonly VesselSourceService _vesselService;
         private readonly bool _isEditor;
         private readonly UIStyleManager _styleManager = new UIStyleManager();
@@ -41,11 +43,6 @@ namespace OrbitalPayloadCalculator.UI
         private int _altitudeUnitIndex = 1;
         private static readonly string[] AltitudeUnitLabels = { "m", "km", "Mm" };
         private static readonly double[] AltitudeUnitScales = { 1.0d, 1e3d, 1e6d };
-        private string _fontSizeInput;
-        private string _hotkeyKeyInput;
-        private bool _hotkeyAltInput;
-        private bool _hotkeyCtrlInput;
-        private bool _hotkeyShiftInput;
         private string _manualGravityLossInput = "";
         private string _manualAtmoLossInput = "";
         private string _manualAttitudeLossInput = "";
@@ -86,6 +83,7 @@ namespace OrbitalPayloadCalculator.UI
         private Rect _engineRoleSelectPopupRect;
         private int _engineRoleSelectPartId;
         private string _engineRoleSelectPartName = string.Empty;
+        private bool _treatCargoBayAsFairing;
 
         /// <summary>Per-vessel ground altitude recorded before takeoff, used for "Takeoff Altitude" when in flight.</summary>
         private readonly Dictionary<Guid, double> _takeoffAltitudeByVessel = new Dictionary<Guid, double>();
@@ -93,9 +91,8 @@ namespace OrbitalPayloadCalculator.UI
         /// <summary>Per-vessel latitude at takeoff; fixed when in flight until Landed/Prelaunch.</summary>
         private readonly Dictionary<Guid, double> _takeoffLatitudeByVessel = new Dictionary<Guid, double>();
 
-        private int _lastAppliedFontSize = -1;
+        private float _lastUiScaleFactor = -1f;
         private bool _needsHeightReset;
-        private bool _showSettingsPanel;
 
         private bool _disposed;
         private bool _visible;
@@ -123,19 +120,15 @@ namespace OrbitalPayloadCalculator.UI
 
         private const float WindowWidth = 840f;
 
-        public CalculatorWindow(PluginSettings settings, VesselSourceService vesselService, bool isEditor)
+        public CalculatorWindow(VesselSourceService vesselService, bool isEditor)
         {
-            _settings = settings;
             _vesselService = vesselService;
             _isEditor = isEditor;
-            float x = Mathf.Clamp(Screen.width * 0.18f, 20f, Screen.width - WindowWidth - 20f);
-            float y = Mathf.Clamp(Screen.height * 0.48f, 40f, Screen.height - 120f);
+            float screenW = UIScale.GuiScreenSize().x;
+            float screenH = UIScale.GuiScreenSize().y;
+            float x = Mathf.Clamp(screenW * 0.18f, 20f, screenW - WindowWidth - 20f);
+            float y = Mathf.Clamp(screenH * 0.48f, 40f, screenH - 120f);
             _windowRect = new Rect(x, y, WindowWidth, 100);
-            _fontSizeInput = _settings.FontSize.ToString(CultureInfo.InvariantCulture);
-            _hotkeyKeyInput = _settings.HotkeyKey.ToString();
-            _hotkeyAltInput = _settings.HotkeyAlt;
-            _hotkeyCtrlInput = _settings.HotkeyCtrl;
-            _hotkeyShiftInput = _settings.HotkeyShift;
             RefreshBodies();
             ApplyDefaultOrbitInputsForBody(_targets.LaunchBody);
             _analysisWindow = new AnalysisWindow(_styleManager, _vesselService, _lossConfig);
@@ -148,79 +141,123 @@ namespace OrbitalPayloadCalculator.UI
             var savedSkin = GUI.skin;
             GUI.skin = HighLogic.Skin ?? GUI.skin;
 
-            _styleManager.RebuildIfNeeded(_settings.FontSize);
-
-            if (_settings.FontSize != _lastAppliedFontSize)
+            float uiScale = UIScale.Factor;
+            if (!Mathf.Approximately(uiScale, _lastUiScaleFactor))
             {
-                _lastAppliedFontSize = _settings.FontSize;
+                if (_lastUiScaleFactor > 0f)
+                    ApplyUiScaleChange(_lastUiScaleFactor, uiScale);
+                _lastUiScaleFactor = uiScale;
                 _needsHeightReset = true;
-                if (_showStagePopup)
-                {
-                    _stagePopupNeedsCenter = true;
-                    _stagePopupRect = new Rect(Screen.width * 0.5f, Screen.height * 0.5f, 10, 10);
-                }
             }
+
+            _styleManager.RebuildIfNeeded(FontSize);
 
             if (_needsHeightReset)
             {
                 _needsHeightReset = false;
                 _windowRect = new Rect(_windowRect.x, _windowRect.y, WindowWidth, 100);
             }
+            _windowRect = UIScale.ClampToGuiScreen(_windowRect);
 
-            _windowRect = ClickThruBlocker.GUILayoutWindow(WindowId, _windowRect, DrawWindow, Loc("#LOC_OPC_Title"), _styleManager.WindowStyle);
-
-            if (_showBodyPopup)
+            UIScale.BeginGUI();
+            try
             {
-                _bodyPopupRect = ClickThruBlocker.GUILayoutWindow(BodyPopupId, _bodyPopupRect, DrawBodyPopup,
-                    Loc("#LOC_OPC_SelectBody"), _styleManager.WindowStyle);
-            }
+                _windowRect = ClickThruBlocker.GUILayoutWindow(WindowId, _windowRect, DrawWindow, Loc("#LOC_OPC_Title"), _styleManager.WindowStyle);
+                _windowRect = UIScale.ClampToGuiScreen(_windowRect);
 
-            if (_showVesselPopup)
-            {
-                _vesselPopupRect = ClickThruBlocker.GUILayoutWindow(VesselPopupId, _vesselPopupRect, DrawVesselPopup,
-                    Loc("#LOC_OPC_SelectVessel"), _styleManager.WindowStyle);
-            }
-
-            if (_showStagePopup)
-            {
-                _stagePopupRect = ClickThruBlocker.GUILayoutWindow(StagePopupId, _stagePopupRect, DrawStagePopup,
-                    Loc("#LOC_OPC_StageBreakdown"), _styleManager.WindowStyle);
-
-                if (_stagePopupNeedsCenter && _stagePopupRect.width > 20)
+                if (_showBodyPopup)
                 {
-                    _stagePopupRect.x = (Screen.width - _stagePopupRect.width) * 0.5f;
-                    _stagePopupRect.y = (Screen.height - _stagePopupRect.height) * 0.5f;
-                    _stagePopupNeedsCenter = false;
+                    _bodyPopupRect = ClickThruBlocker.GUILayoutWindow(BodyPopupId, _bodyPopupRect, DrawBodyPopup,
+                        Loc("#LOC_OPC_SelectBody"), _styleManager.WindowStyle);
+                    _bodyPopupRect = UIScale.ClampToGuiScreen(_bodyPopupRect);
                 }
-            }
 
-            if (_showAdvancedHelpPopup)
+                if (_showVesselPopup)
+                {
+                    _vesselPopupRect = ClickThruBlocker.GUILayoutWindow(VesselPopupId, _vesselPopupRect, DrawVesselPopup,
+                        Loc("#LOC_OPC_SelectVessel"), _styleManager.WindowStyle);
+                    _vesselPopupRect = UIScale.ClampToGuiScreen(_vesselPopupRect);
+                }
+
+                if (_showStagePopup)
+                {
+                    _stagePopupRect = ClickThruBlocker.GUILayoutWindow(StagePopupId, _stagePopupRect, DrawStagePopup,
+                        Loc("#LOC_OPC_StageBreakdown"), _styleManager.WindowStyle);
+
+                    if (_stagePopupNeedsCenter && _stagePopupRect.width > 20)
+                    {
+                        var screen = UIScale.GuiScreenSize();
+                        _stagePopupRect.x = (screen.x - _stagePopupRect.width) * 0.5f;
+                        _stagePopupRect.y = (screen.y - _stagePopupRect.height) * 0.5f;
+                        _stagePopupNeedsCenter = false;
+                    }
+                    _stagePopupRect = UIScale.ClampToGuiScreen(_stagePopupRect);
+                }
+
+                if (_showAdvancedHelpPopup)
+                {
+                    _advancedHelpPopupRect = ClickThruBlocker.GUILayoutWindow(AdvancedHelpPopupId, _advancedHelpPopupRect,
+                        DrawAdvancedHelpPopup, Loc("#LOC_OPC_AdvancedHelpTitle"), _styleManager.WindowStyle);
+                    _advancedHelpPopupRect = UIScale.ClampToGuiScreen(_advancedHelpPopupRect);
+                }
+
+                if (_showDvDetailsPopup)
+                {
+                    _dvDetailsPopupRect = ClickThruBlocker.GUILayoutWindow(DvDetailsPopupId, _dvDetailsPopupRect,
+                        DrawDvDetailsPopup, Loc("#LOC_OPC_DvDetailsTitle"), _styleManager.WindowStyle);
+                    _dvDetailsPopupRect = UIScale.ClampToGuiScreen(_dvDetailsPopupRect);
+                }
+
+                if (_showEngineRolePopup)
+                {
+                    _engineRolePopupRect = ClickThruBlocker.GUILayoutWindow(EngineRolePopupId, _engineRolePopupRect,
+                        DrawEngineRolePopup, Loc("#LOC_OPC_EngineClassification"), _styleManager.WindowStyle);
+                    _engineRolePopupRect = UIScale.ClampToGuiScreen(_engineRolePopupRect);
+                }
+
+                if (_showEngineRoleSelectPopup)
+                {
+                    _engineRoleSelectPopupRect = ClickThruBlocker.GUILayoutWindow(EngineRoleSelectPopupId, _engineRoleSelectPopupRect,
+                        DrawEngineRoleSelectPopup, Loc("#LOC_OPC_SelectEngineRole"), _styleManager.WindowStyle);
+                    _engineRoleSelectPopupRect = UIScale.ClampToGuiScreen(_engineRoleSelectPopupRect);
+                }
+
+                _analysisWindow.OnGUI();
+            }
+            finally
             {
-                _advancedHelpPopupRect = ClickThruBlocker.GUILayoutWindow(AdvancedHelpPopupId, _advancedHelpPopupRect,
-                    DrawAdvancedHelpPopup, Loc("#LOC_OPC_AdvancedHelpTitle"), _styleManager.WindowStyle);
+                UIScale.EndGUI();
             }
-
-            if (_showDvDetailsPopup)
-            {
-                _dvDetailsPopupRect = ClickThruBlocker.GUILayoutWindow(DvDetailsPopupId, _dvDetailsPopupRect,
-                    DrawDvDetailsPopup, Loc("#LOC_OPC_DvDetailsTitle"), _styleManager.WindowStyle);
-            }
-
-            if (_showEngineRolePopup)
-            {
-                _engineRolePopupRect = ClickThruBlocker.GUILayoutWindow(EngineRolePopupId, _engineRolePopupRect,
-                    DrawEngineRolePopup, Loc("#LOC_OPC_EngineClassification"), _styleManager.WindowStyle);
-            }
-
-            if (_showEngineRoleSelectPopup)
-            {
-                _engineRoleSelectPopupRect = ClickThruBlocker.GUILayoutWindow(EngineRoleSelectPopupId, _engineRoleSelectPopupRect,
-                    DrawEngineRoleSelectPopup, Loc("#LOC_OPC_SelectEngineRole"), _styleManager.WindowStyle);
-            }
-
-            _analysisWindow.OnGUI();
 
             GUI.skin = savedSkin;
+        }
+
+        private void ApplyUiScaleChange(float oldScale, float newScale)
+        {
+            if (oldScale <= 0f || newScale <= 0f)
+                return;
+
+            _windowRect = ScaleWindowPosition(_windowRect, oldScale, newScale);
+            _bodyPopupRect = ScaleWindowPosition(_bodyPopupRect, oldScale, newScale);
+            _vesselPopupRect = ScaleWindowPosition(_vesselPopupRect, oldScale, newScale);
+            _stagePopupRect = ScaleWindowPosition(_stagePopupRect, oldScale, newScale);
+            _advancedHelpPopupRect = ScaleWindowPosition(_advancedHelpPopupRect, oldScale, newScale);
+            _dvDetailsPopupRect = ScaleWindowPosition(_dvDetailsPopupRect, oldScale, newScale);
+            _engineRolePopupRect = ScaleWindowPosition(_engineRolePopupRect, oldScale, newScale);
+            _engineRoleSelectPopupRect = ScaleWindowPosition(_engineRoleSelectPopupRect, oldScale, newScale);
+            _stagePopupNeedsCenter = _showStagePopup;
+            _analysisWindow.OnUiScaleChanged(oldScale, newScale);
+        }
+
+        private static Rect ScaleWindowPosition(Rect rect, float oldScale, float newScale)
+        {
+            if (rect.width <= 0f && rect.height <= 0f)
+                return rect;
+
+            float ratio = oldScale / newScale;
+            rect.x *= ratio;
+            rect.y *= ratio;
+            return UIScale.ClampToGuiScreen(rect);
         }
 
         public void Dispose()
@@ -245,8 +282,6 @@ namespace OrbitalPayloadCalculator.UI
         {
             GUILayout.BeginVertical();
             GUILayout.Space(12);
-            DrawGuiSettingsPanel();
-            GUILayout.Space(6);
 
             GUILayout.BeginHorizontal();
             DrawLeftPanel();
@@ -254,7 +289,7 @@ namespace OrbitalPayloadCalculator.UI
             DrawRightPanel();
             GUILayout.EndHorizontal();
 
-            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(30)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
             {
                 Visible = false;
                 _showBodyPopup = false;
@@ -266,69 +301,13 @@ namespace OrbitalPayloadCalculator.UI
             GUI.DragWindow(new Rect(0, 0, 10000, 30));
         }
 
-        private void DrawGuiSettingsPanel()
-        {
-            var toggleLabel = _showSettingsPanel
-                ? $"\u25bc {Loc("#LOC_OPC_GuiSettings")}"
-                : $"\u25b6 {Loc("#LOC_OPC_GuiSettings")}";
-
-            if (GUILayout.Button(toggleLabel, _styleManager.ButtonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(28)))
-            {
-                _showSettingsPanel = !_showSettingsPanel;
-                InvalidateWindowHeight();
-            }
-
-            if (!_showSettingsPanel) return;
-
-            GUILayout.BeginVertical(_styleManager.PanelStyle);
-
-            var fs = _settings.FontSize;
-            var labelWidth = fs * 12f;
-            var fieldWidth = fs * 5f;
-            var toggleMinWidth = fs * 4f;
-            var rowHeight = fs + 10f;
-
-            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
-            GUILayout.Label($"{Loc("#LOC_OPC_FontSize")} [13-20]", _styleManager.LabelStyle, GUILayout.Width(labelWidth));
-            _fontSizeInput = GUILayout.TextField(_fontSizeInput, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(6);
-            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
-            GUILayout.Label(Loc("#LOC_OPC_HotkeyKey"), _styleManager.LabelStyle, GUILayout.Width(labelWidth));
-            _hotkeyKeyInput = GUILayout.TextField(_hotkeyKeyInput, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(6);
-            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
-            GUILayout.Label(Loc("#LOC_OPC_HotkeyModifiers"), _styleManager.LabelStyle, GUILayout.Width(labelWidth));
-            _hotkeyAltInput = GUILayout.Toggle(_hotkeyAltInput, "Alt", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
-            _hotkeyCtrlInput = GUILayout.Toggle(_hotkeyCtrlInput, "Ctrl", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
-            _hotkeyShiftInput = GUILayout.Toggle(_hotkeyShiftInput, "Shift", _styleManager.ToggleStyle, GUILayout.MinWidth(toggleMinWidth));
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(4);
-            GUILayout.Label($"{Loc("#LOC_OPC_CurrentHotkey")} {BuildHotkeyLabel(_hotkeyKeyInput, _hotkeyAltInput, _hotkeyCtrlInput, _hotkeyShiftInput)}", _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
-
-            GUILayout.Space(6);
-            if (GUILayout.Button(Loc("#LOC_OPC_ApplySettings"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
-            {
-                ApplyGuiSettings();
-            }
-
-            GUILayout.EndVertical();
-        }
-
         private void DrawBodyRow()
         {
             RefreshBodies();
 
-            var fs = _settings.FontSize;
-            var rowH = fs + 10f;
-            var headerLabelWidth = fs * 12f;
+            var fs = FontSize;
+            var rowH = fs + 14f;
+            var headerLabelWidth = fs * 14f;
 
             GUILayout.BeginHorizontal(GUILayout.Height(rowH));
             GUILayout.Label(Loc("#LOC_OPC_LaunchBody"), _styleManager.LabelStyle, GUILayout.Width(headerLabelWidth), GUILayout.Height(rowH));
@@ -346,8 +325,8 @@ namespace OrbitalPayloadCalculator.UI
                     var pw = 280f;
                     var ph = Mathf.Min(_bodies.Length * 30 + 60, 500f);
                     _bodyPopupRect = new Rect(
-                        (Screen.width - pw) * 0.5f,
-                        (Screen.height - ph) * 0.5f,
+                        (UIScale.GuiScreenSize().x - pw) * 0.5f,
+                        (UIScale.GuiScreenSize().y - ph) * 0.5f,
                         pw, ph);
                 }
             }
@@ -388,78 +367,92 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawLeftPanel()
         {
-            GUILayout.BeginVertical(GUILayout.Width(400));
+            GUILayout.BeginVertical(GUILayout.Width(LeftPanelWidth));
             GUILayout.Label(Loc("#LOC_OPC_InputHeader"), _styleManager.CenteredHeaderStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(4);
 
-            GUILayout.BeginVertical(_styleManager.PanelStyle);
+            GUILayout.BeginVertical(_styleManager.PanelStyle, GUILayout.ExpandWidth(true));
 
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
             DrawBodyRow();
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
             DrawVesselSourcePanel();
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
             DrawTargetOrbitPanel();
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
             DrawLossPanel();
             GUILayout.EndVertical();
 
-            GUILayout.Space(6);
-            var cargoBayAsFairing = GUILayout.Toggle(_settings.TreatCargoBayAsFairing, Loc("#LOC_OPC_TreatCargoBayAsFairing"), _styleManager.ToggleStyle ?? GUI.skin.toggle, GUILayout.ExpandWidth(true));
-            if (cargoBayAsFairing != _settings.TreatCargoBayAsFairing)
+            var rowH = ButtonHeight;
+            if (DrawLabeledToggle(_treatCargoBayAsFairing, Loc("#LOC_OPC_TreatCargoBayAsFairing"), rowH, out var cargoBayAsFairing))
             {
-                _settings.SetTreatCargoBayAsFairing(cargoBayAsFairing);
+                _treatCargoBayAsFairing = cargoBayAsFairing;
                 Compute();
             }
-            GUILayout.Label(Loc("#LOC_OPC_TreatCargoBayAsFairingHint"), _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle);
+            GUILayout.Space(FontSize * 1.1f);
+            GUILayout.Space(FontSize * 1.1f);
+            GUILayout.Label(Loc("#LOC_OPC_TreatCargoBayAsFairingHint"), _styleManager.HintLabelStyle ?? _styleManager.SmallLabelStyle);
             GUILayout.Space(2);
-            GUILayout.Label(Loc("#LOC_OPC_SeparatorEngineHint"), _styleManager.LabelStyle);
+            GUILayout.Label(Loc("#LOC_OPC_SeparatorEngineHint"), _styleManager.LabelStyleRow);
             
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Loc("#LOC_OPC_Calculate"), _styleManager.ButtonStyle, GUILayout.Height(32)))
-                Compute();
-            if (GUILayout.Button(Loc("#LOC_OPC_AnalysisButton"), _styleManager.ButtonStyle, GUILayout.Height(32), GUILayout.Width(100)))
-            {
-                // Sync context before showing
-                // Ensure inputs are parsed to targets
-                Compute(); // Optional: run compute to sync targets? Or just parse inputs.
-                           // Actually Compute() updates _targets from inputs. So calling Compute first is good practice 
-                           // to validate inputs, but might be annoying if inputs are invalid.
-                           // Let's just parse inputs manually or assume user clicked Calculate at least once?
-                           // Better: Parse inputs without full compute.
-                
-                // For now, let's just use current _targets. If user hasn't calculated, they might be defaults.
-                // We should probably update _targets from inputs here.
-                // Compute() already does parsing and updates _targets if valid.
-                
-                _analysisWindow.SetContext(_targets.LaunchBody, _targets.TargetInclinationDegrees, _targets.LaunchLatitudeDegrees);
-                _analysisWindow.Visible = !_analysisWindow.Visible;
-            }
-            GUILayout.EndHorizontal();
+            DrawCalculateAnalysisButtons();
 
             GUILayout.Space(4);
-            if (GUILayout.Button(Loc("#LOC_OPC_Reset"), _styleManager.ButtonStyle, GUILayout.Height(32)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Reset"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
                 ResetAll();
 
             GUILayout.EndVertical();
             GUILayout.EndVertical();
         }
 
+        private void DrawCalculateAnalysisButtons()
+        {
+            var calculateLabel = Loc("#LOC_OPC_Calculate");
+            var analysisLabel = Loc("#LOC_OPC_AnalysisButton");
+            var analysisWidth = ButtonWidth(analysisLabel, 100f);
+            var minCalculateWidth = ButtonWidth(calculateLabel, 140f);
+            var availableWidth = LeftPanelWidth - 28f;
+
+            if (minCalculateWidth + analysisWidth + 8f > availableWidth)
+            {
+                if (GUILayout.Button(calculateLabel, _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.ExpandWidth(true)))
+                    Compute();
+                GUILayout.Space(4);
+                if (GUILayout.Button(analysisLabel, _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.ExpandWidth(true)))
+                    ToggleAnalysisWindow();
+                return;
+            }
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(calculateLabel, _styleManager.ButtonStyle, GUILayout.ExpandWidth(true), GUILayout.MinWidth(minCalculateWidth), GUILayout.Height(ButtonHeight)))
+                Compute();
+            if (GUILayout.Button(analysisLabel, _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.Width(analysisWidth)))
+                ToggleAnalysisWindow();
+            GUILayout.EndHorizontal();
+        }
+
+        private void ToggleAnalysisWindow()
+        {
+            Compute();
+            _analysisWindow.SetContext(_targets.LaunchBody, _targets.TargetInclinationDegrees, _targets.LaunchLatitudeDegrees);
+            _analysisWindow.Visible = !_analysisWindow.Visible;
+        }
+
         private void DrawRightPanel()
         {
-            GUILayout.BeginVertical(GUILayout.Width(420));
+            GUILayout.BeginVertical(GUILayout.Width(RightPanelWidth));
             GUILayout.Label(Loc("#LOC_OPC_ResultHeader"), _styleManager.CenteredHeaderStyle, GUILayout.ExpandWidth(true));
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.PanelStyle);
+            GUILayout.BeginVertical(_styleManager.PanelStyle, GUILayout.ExpandWidth(true));
             DrawResultPanel();
             GUILayout.EndVertical();
             GUILayout.EndVertical();
@@ -467,7 +460,8 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawVesselSourcePanel()
         {
-            GUILayout.Label(Loc("#LOC_OPC_VesselSource"), _styleManager.HeaderStyle);
+            var rowH = ButtonHeight;
+            GUILayout.Label(Loc("#LOC_OPC_VesselSource"), _styleManager.HeaderStyle, GUILayout.Height(rowH));
             GUILayout.Space(6);
 
             if (_isEditor)
@@ -478,9 +472,9 @@ namespace OrbitalPayloadCalculator.UI
                     && EditorLogic.fetch.ship.parts.Count > 0;
 
                 if (hasEditorVessel)
-                    GUILayout.Label(Loc("#LOC_OPC_EditorAutoRead"), _styleManager.LabelStyle);
+                    GUILayout.Label(Loc("#LOC_OPC_EditorAutoRead"), _styleManager.LabelStyleRow, GUILayout.ExpandWidth(true));
                 else
-                    GUILayout.Label(Loc("#LOC_OPC_EditorNoVessel"), _styleManager.WarningLabelStyle);
+                    GUILayout.Label(Loc("#LOC_OPC_EditorNoVessel"), _styleManager.WarningLabelRowStyle, GUILayout.ExpandWidth(true));
 
                 return;
             }
@@ -495,12 +489,11 @@ namespace OrbitalPayloadCalculator.UI
             var idx = _vesselService.GetSelectedFlightIndex();
             var vesselName = candidates[idx].vesselName;
 
-            var fs = _settings.FontSize;
-            var rowH = fs + 10f;
-            var headerLabelWidth = fs * 12f;
+            var fs = FontSize;
+            var headerLabelWidth = fs * 14f;
 
             GUILayout.BeginHorizontal(GUILayout.Height(rowH));
-            GUILayout.Label(Loc("#LOC_OPC_CurrentVessel"), _styleManager.LabelStyle, GUILayout.Width(headerLabelWidth), GUILayout.Height(rowH));
+            GUILayout.Label(Loc("#LOC_OPC_CurrentVessel"), _styleManager.LabelStyleRow, GUILayout.Width(headerLabelWidth), GUILayout.Height(rowH));
 
             if (GUILayout.Button(Truncate(vesselName, 20), _styleManager.ButtonStyle, GUILayout.MaxWidth(220), GUILayout.Height(rowH)))
             {
@@ -511,8 +504,8 @@ namespace OrbitalPayloadCalculator.UI
                     var pw = 320f;
                     var ph = Mathf.Min(candidates.Count * 30 + 60, 350f);
                     _vesselPopupRect = new Rect(
-                        (Screen.width - pw) * 0.5f,
-                        (Screen.height - ph) * 0.5f,
+                        (UIScale.GuiScreenSize().x - pw) * 0.5f,
+                        (UIScale.GuiScreenSize().y - ph) * 0.5f,
                         pw, ph);
                 }
             }
@@ -554,10 +547,10 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawTargetOrbitPanel()
         {
-            var fs = _settings.FontSize;
+            var fs = FontSize;
             var btnW = fs * 3.5f;
-            var rowH = fs + 10f;
-            var headerLabelWidth = fs * 12f;
+            var rowH = fs + 14f;
+            var headerLabelWidth = fs * 14f;
 
             GUILayout.BeginHorizontal(GUILayout.Height(rowH));
             GUILayout.Label(Loc("#LOC_OPC_TargetOrbit"), _styleManager.HeaderStyle, GUILayout.Width(headerLabelWidth), GUILayout.Height(rowH));
@@ -589,21 +582,48 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawLossPanel()
         {
-            var fs = _settings.FontSize;
-            var rowHeight = fs + 10f;
+            var fs = FontSize;
+            var rowHeight = fs + 14f;
             var rowSpacing = Mathf.Max(6f, fs * 0.4f);
 
-            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Pessimistic, Loc("#LOC_OPC_PessimisticLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+            if (DrawModeToggle(_lossConfig.EstimateMode == LossEstimateMode.Pessimistic, Loc("#LOC_OPC_PessimisticLoss"), rowHeight))
                 _lossConfig.EstimateMode = LossEstimateMode.Pessimistic;
             GUILayout.Space(rowSpacing);
-            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Normal, Loc("#LOC_OPC_NormalLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+            if (DrawModeToggle(_lossConfig.EstimateMode == LossEstimateMode.Normal, Loc("#LOC_OPC_NormalLoss"), rowHeight))
                 _lossConfig.EstimateMode = LossEstimateMode.Normal;
             GUILayout.Space(rowSpacing);
-            if (GUILayout.Toggle(_lossConfig.EstimateMode == LossEstimateMode.Optimistic, Loc("#LOC_OPC_AggressiveLoss"), _styleManager.ToggleStyle, GUILayout.Height(rowHeight)))
+            if (DrawModeToggle(_lossConfig.EstimateMode == LossEstimateMode.Optimistic, Loc("#LOC_OPC_AggressiveLoss"), rowHeight))
                 _lossConfig.EstimateMode = LossEstimateMode.Optimistic;
             GUILayout.Space(rowSpacing);
 
             DrawAdvancedLossPanel(fs, rowHeight, rowSpacing);
+        }
+
+        private bool DrawModeToggle(bool selected, string label, float rowHeight)
+        {
+            DrawLabeledToggle(selected, label, rowHeight, out var newSelected);
+            return newSelected;
+        }
+
+        private bool DrawLabeledToggle(bool selected, string label, float rowHeight, out bool newSelected)
+        {
+            const float toggleSize = 22f;
+            var toggleStyle = _styleManager.ToggleStyle ?? GUI.skin.toggle;
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            var slot = GUILayoutUtility.GetRect(toggleSize + 6f, rowHeight, GUILayout.Width(toggleSize + 6f));
+            var toggleRect = new Rect(slot.x, slot.y + (slot.height - toggleSize) * 0.5f, toggleSize, toggleSize);
+            newSelected = GUI.Toggle(toggleRect, selected, GUIContent.none, toggleStyle);
+            GUILayout.Label(label, _styleManager.LabelStyleRow, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
+            GUILayout.EndHorizontal();
+            return newSelected != selected;
+        }
+
+        private void DrawSectionLabel(string text, GUIStyle style = null, bool useHeader = false)
+        {
+            var rowH = RowHeight;
+            var labelStyle = style ?? (useHeader ? _styleManager.HeaderStyle : _styleManager.LabelStyleRow);
+            GUILayout.Label(text, labelStyle, GUILayout.ExpandWidth(true), GUILayout.MinHeight(rowH));
         }
 
         private void DrawAdvancedLossPanel(float fs, float rowHeight, float rowSpacing)
@@ -614,25 +634,26 @@ namespace OrbitalPayloadCalculator.UI
 
             var arrow = isOpen ? "\u25bc" : "\u25b6";
             var toggleLabel = $"{arrow} {Loc("#LOC_OPC_AdvancedSettings")}";
-            if (GUILayout.Button(toggleLabel, _styleManager.ButtonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight + 4f)))
+            if (GUILayout.Button(toggleLabel, _styleManager.ButtonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight)))
             {
                 _showAdvancedLoss = !_showAdvancedLoss;
                 InvalidateWindowHeight();
             }
 
-            var helpBtnWidth = (rowHeight + 4f) * 1.2f;
-            if (GUILayout.Button("?", _styleManager.ButtonStyle, GUILayout.Width(helpBtnWidth), GUILayout.Height(rowHeight + 4f)))
+            var helpBtnWidth = rowHeight * 1.2f;
+            if (GUILayout.Button("?", _styleManager.ButtonStyle, GUILayout.Width(helpBtnWidth), GUILayout.Height(rowHeight)))
             {
                 _showAdvancedHelpPopup = true;
-                var pw = Mathf.Min(480f, Screen.width * 0.9f);
-                var ph = Mathf.Min(360f, Screen.height * 0.7f);
-                _advancedHelpPopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
+                var screen = UIScale.GuiScreenSize();
+                var pw = Mathf.Min(480f, screen.x * 0.9f);
+                var ph = Mathf.Min(360f, screen.y * 0.7f);
+                _advancedHelpPopupRect = new Rect((screen.x - pw) * 0.5f, (screen.y - ph) * 0.5f, pw, ph);
             }
             GUILayout.EndHorizontal();
 
             if (!isOpen) return;
 
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
 
             DrawAdvancedInputRow(Loc("#LOC_OPC_TurnStartSpeed"), ref _turnStartSpeedInput, "m/s", fs, rowHeight);
             GUILayout.Space(rowSpacing);
@@ -692,7 +713,8 @@ namespace OrbitalPayloadCalculator.UI
 
         private void DrawAdvancedHelpPopup(int id)
         {
-            var maxW = Mathf.Min(480f, Screen.width * 0.9f);
+            var screen = UIScale.GuiScreenSize();
+            var maxW = Mathf.Min(480f, screen.x * 0.9f);
             GUILayout.BeginVertical(GUILayout.MinWidth(maxW), GUILayout.MaxWidth(maxW));
             GUILayout.Space(6);
 
@@ -716,7 +738,7 @@ namespace OrbitalPayloadCalculator.UI
             GUILayout.EndScrollView();
 
             GUILayout.Space(6);
-            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.ExpandWidth(true)))
                 _showAdvancedHelpPopup = false;
 
             GUILayout.EndVertical();
@@ -742,68 +764,69 @@ namespace OrbitalPayloadCalculator.UI
                     || _lastResult.ErrorMessageKey == "#LOC_OPC_LatitudeOutOfRange"
                     || _lastResult.ErrorMessageKey == "#LOC_OPC_InvalidInclination"
                     || _lastResult.ErrorMessageKey == "#LOC_OPC_InclinationOutOfRange";
-                var style = isWarning ? _styleManager.WarningLabelStyle : _styleManager.LabelStyle;
-                GUILayout.Label(msg, style ?? _styleManager.LabelStyle);
+                var style = isWarning ? _styleManager.WarningLabelStyle : _styleManager.LabelStyleRow;
+                GUILayout.Label(msg, style ?? _styleManager.LabelStyleRow, GUILayout.ExpandWidth(true), GUILayout.MinHeight(RowHeight));
                 return;
             }
 
             if (!string.IsNullOrEmpty(_lastResult.WarningMessageKey))
             {
-                GUILayout.BeginVertical(_styleManager.SectionStyle);
+                GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
                 GUILayout.Label(Loc(_lastResult.WarningMessageKey), _styleManager.WarningLabelStyle);
                 GUILayout.EndVertical();
                 GUILayout.Space(4);
             }
 
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_VesselName")}: {_lastStats.VesselName}", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_WetMass")}: {FormatNum(_lastStats.WetMassTons)} t", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_DryMass")}: {FormatNum(_lastStats.DryMassTons)} t", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawResultRow(Loc("#LOC_OPC_VesselName"), _lastStats.VesselName);
+            DrawResultRow(Loc("#LOC_OPC_WetMass"), FormatNum(_lastStats.WetMassTons), "t");
+            DrawResultRow(Loc("#LOC_OPC_DryMass"), FormatNum(_lastStats.DryMassTons), "t");
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_LaunchBody")}: {_lastBodyName}", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_ResultApoapsis")}: {FormatAltitude(_lastResult.ApoapsisAltitudeMeters)}", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_ResultPeriapsis")}: {FormatAltitude(_lastResult.PeriapsisAltitudeMeters)}", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_ResultInclination")}: {_lastResult.InclinationDegrees:F1}\u00b0", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_ResultEccentricity")}: {_lastResult.Eccentricity:F6}", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawResultRow(Loc("#LOC_OPC_LaunchBody"), _lastBodyName);
+            DrawResultRow(Loc("#LOC_OPC_ResultApoapsis"), FormatAltitude(_lastResult.ApoapsisAltitudeMeters));
+            DrawResultRow(Loc("#LOC_OPC_ResultPeriapsis"), FormatAltitude(_lastResult.PeriapsisAltitudeMeters));
+            DrawResultRow(Loc("#LOC_OPC_ResultInclination"), $"{_lastResult.InclinationDegrees:F1}\u00b0");
+            DrawResultRow(Loc("#LOC_OPC_ResultEccentricity"), _lastResult.Eccentricity.ToString("F6", CultureInfo.InvariantCulture));
             GUILayout.EndVertical();
 
             if (_lastResult.Losses.UsedTurnStartSpeed >= 0d)
             {
                 GUILayout.Space(4);
-                GUILayout.BeginVertical(_styleManager.SectionStyle);
-                GUILayout.Label(Loc("#LOC_OPC_ParamsUsedHeader"), _styleManager.HeaderStyle);
+                GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+                GUILayout.Label(Loc("#LOC_OPC_ParamsUsedHeader"), _styleManager.HeaderStyle, GUILayout.Height(FontSize + 10f));
                 if (_lastResult.Losses.UsedTurnExponentBottom >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentBottom")}: {FormatNum(_lastResult.Losses.UsedTurnExponentBottom)}", _styleManager.LabelStyle);
+                    DrawResultRow(Loc("#LOC_OPC_TurnExponentBottom"), FormatNum(_lastResult.Losses.UsedTurnExponentBottom), indent: true);
                 if (_lastResult.Losses.UsedTurnExponentFull >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_TurnExponentFull")}: {FormatNum(_lastResult.Losses.UsedTurnExponentFull)}", _styleManager.LabelStyle);
+                    DrawResultRow(Loc("#LOC_OPC_TurnExponentFull"), FormatNum(_lastResult.Losses.UsedTurnExponentFull), indent: true);
                 var srcTurn = _lastResult.Losses.UsedTurnStartSpeedManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartSpeed")}: {_lastResult.Losses.UsedTurnStartSpeed:F0} m/s{srcTurn}", _styleManager.LabelStyle);
+                DrawResultRow(Loc("#LOC_OPC_TurnStartSpeed"), $"{_lastResult.Losses.UsedTurnStartSpeed:F0} m/s{srcTurn}", indent: true);
                 var srcAlt = _lastResult.Losses.UsedTurnStartAltitudeManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
-                GUILayout.Label($"  {Loc("#LOC_OPC_TurnStartAlt")}: {_lastResult.Losses.UsedTurnStartAltitude:F0} m{srcAlt}", _styleManager.LabelStyle);
+                DrawResultRow(Loc("#LOC_OPC_TurnStartAlt"), $"{_lastResult.Losses.UsedTurnStartAltitude:F0} m{srcAlt}", indent: true);
                 var srcCda = _lastResult.Losses.UsedCdAManual ? $" ({Loc("#LOC_OPC_ParamSourceManual")})" : "";
                 if (_lastResult.Losses.UsedCdACoefficient >= 0d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_CdACoeffLabel")}: {FormatNum(_lastResult.Losses.UsedCdACoefficient)}{srcCda}", _styleManager.LabelStyle);
-                GUILayout.Label($"  {Loc("#LOC_OPC_CdAAreaLabel")}: {FormatNum(_lastResult.Losses.UsedCdA)} m²{srcCda}", _styleManager.LabelStyle);
+                    DrawResultRow(Loc("#LOC_OPC_CdACoeffLabel"), $"{FormatNum(_lastResult.Losses.UsedCdACoefficient)}{srcCda}", indent: true);
+                DrawResultRow(Loc("#LOC_OPC_CdAAreaLabel"), $"{FormatNum(_lastResult.Losses.UsedCdA)} m\u00b2{srcCda}", indent: true);
                 GUILayout.EndVertical();
             }
 
             GUILayout.Space(6);
-            GUILayout.Label($"{Loc("#LOC_OPC_EstimatedPayload")}: {FormatNum(_lastResult.EstimatedPayloadTons)} t", _styleManager.HeaderStyle);
+            DrawResultRow(Loc("#LOC_OPC_EstimatedPayload"), FormatNum(_lastResult.EstimatedPayloadTons), "t", useHeaderStyle: true);
 
             GUILayout.Space(6);
             var btnStyle = _styleManager.ButtonStyle;
-            var btnHeight = 28f;
+            var btnHeight = ButtonHeight;
             if (GUILayout.Button(Loc("#LOC_OPC_ShowDvDetails"), btnStyle, GUILayout.Height(btnHeight)))
             {
                 _showDvDetailsPopup = !_showDvDetailsPopup;
                 if (_showDvDetailsPopup)
                 {
-                    var pw = Mathf.Min(320f, Screen.width * 0.9f);
-                    var ph = Mathf.Min(420f, Screen.height * 0.7f);
-                    _dvDetailsPopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
+                    var popupScreen = UIScale.GuiScreenSize();
+                    var pw = Mathf.Min(320f, popupScreen.x * 0.9f);
+                    var ph = Mathf.Min(420f, popupScreen.y * 0.7f);
+                    _dvDetailsPopupRect = new Rect((popupScreen.x - pw) * 0.5f, (popupScreen.y - ph) * 0.5f, pw, ph);
                 }
             }
             GUILayout.Space(4);
@@ -815,7 +838,8 @@ namespace OrbitalPayloadCalculator.UI
                     if (_showStagePopup)
                     {
                         _stagePopupNeedsCenter = true;
-                        _stagePopupRect = new Rect(Screen.width * 0.5f, Screen.height * 0.5f, 10, 10);
+                        var centerScreen = UIScale.GuiScreenSize();
+                        _stagePopupRect = new Rect(centerScreen.x * 0.5f, centerScreen.y * 0.5f, 10, 10);
                     }
                 }
                 GUILayout.Space(4);
@@ -825,9 +849,12 @@ namespace OrbitalPayloadCalculator.UI
                     _showEngineRoleSelectPopup = false;
                     if (_showEngineRolePopup)
                     {
-                        var pw = Mathf.Min(920f, Screen.width * 0.95f);
-                        var ph = Mathf.Min(440f, Screen.height * 0.75f);
-                        _engineRolePopupRect = new Rect((Screen.width - pw) * 0.5f, (Screen.height - ph) * 0.5f, pw, ph);
+                        var roleScreen = UIScale.GuiScreenSize();
+                        var minRoleWidth = 180f + LabelWidth($"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(EngineRole.Main)}", 220f) +
+                            ButtonWidth(Loc("#LOC_OPC_CycleRole"), 120f) + ButtonWidth(Loc("#LOC_OPC_AutoRole"), 90f) + 48f;
+                        var pw = Mathf.Min(Mathf.Max(920f, minRoleWidth), roleScreen.x * 0.95f);
+                        var ph = Mathf.Min(440f, roleScreen.y * 0.75f);
+                        _engineRolePopupRect = new Rect((roleScreen.x - pw) * 0.5f, (roleScreen.y - ph) * 0.5f, pw, ph);
                     }
                 }
             }
@@ -845,7 +872,7 @@ namespace OrbitalPayloadCalculator.UI
                 return;
             }
 
-            var minW = _settings.FontSize * 30f;
+            var minW = FontSize * 30f;
             GUILayout.BeginVertical(GUILayout.MinWidth(minW));
             GUILayout.Space(6);
 
@@ -883,7 +910,7 @@ namespace OrbitalPayloadCalculator.UI
         private void DrawDvDetailsPopup(int id)
         {
             GUILayout.Space(6);
-            GUILayout.BeginVertical(_styleManager.PanelStyle);
+            GUILayout.BeginVertical(_styleManager.PanelStyle, GUILayout.ExpandWidth(true));
 
             if (!_isEditor && FlightGlobals.ActiveVessel != null)
             {
@@ -902,55 +929,55 @@ namespace OrbitalPayloadCalculator.UI
                     ? (displayAltM >= 1000d ? $"{displayAltM / 1000.0:F2} km" : $"{displayAltM:F1} m")
                     : "—";
 
-                GUILayout.BeginVertical(_styleManager.SectionStyle);
-                GUILayout.Label($"{Loc(labelKey)}: {altStr}", _styleManager.LabelStyle);
+                GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+                DrawSectionLabel($"{Loc(labelKey)}: {altStr}");
                 GUILayout.EndVertical();
                 GUILayout.Space(4);
             }
 
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_AvailableDv")}: {FormatDv(_lastResult.AvailableDv)} m/s", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawSectionLabel($"{Loc("#LOC_OPC_AvailableDv")}: {FormatDv(_lastResult.AvailableDv)} m/s");
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_IdealDv")}: {FormatDv(_lastResult.IdealDvFromSurface)} m/s", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawSectionLabel($"{Loc("#LOC_OPC_IdealDv")}: {FormatDv(_lastResult.IdealDvFromSurface)} m/s");
             if (_lastResult.IdealDvUsesModelA)
-                GUILayout.Label($"  ({Loc("#LOC_OPC_IdealDvModelAHint")})", _styleManager.LabelStyle);
+                DrawSectionLabel($"  ({Loc("#LOC_OPC_IdealDvModelAHint")})");
             else
             {
-                GUILayout.Label($"  {Loc("#LOC_OPC_Burn1Dv")}: {FormatDv(_lastResult.Burn1Dv)} m/s", _styleManager.LabelStyle);
-                GUILayout.Label($"  {Loc("#LOC_OPC_Burn2Dv")}: {FormatDv(_lastResult.Burn2Dv)} m/s", _styleManager.LabelStyle);
+                DrawSectionLabel($"  {Loc("#LOC_OPC_Burn1Dv")}: {FormatDv(_lastResult.Burn1Dv)} m/s");
+                DrawSectionLabel($"  {Loc("#LOC_OPC_Burn2Dv")}: {FormatDv(_lastResult.Burn2Dv)} m/s");
                 if (_lastResult.Burn3Dv > 0.5d)
-                    GUILayout.Label($"  {Loc("#LOC_OPC_Burn3Dv")}: {FormatDv(_lastResult.Burn3Dv)} m/s", _styleManager.LabelStyle);
+                    DrawSectionLabel($"  {Loc("#LOC_OPC_Burn3Dv")}: {FormatDv(_lastResult.Burn3Dv)} m/s");
             }
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_TotalLossDv")}: {FormatDv(_lastResult.Losses.TotalDv)} m/s", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawSectionLabel($"{Loc("#LOC_OPC_TotalLossDv")}: {FormatDv(_lastResult.Losses.TotalDv)} m/s");
             var rotSign = _lastResult.RotationDv >= 0.0d ? "+" : "";
             var rotHint = _lastResult.RotationDv < -0.5d
                 ? $" ({Loc("#LOC_OPC_RotationAssist")})"
                 : _lastResult.RotationDv > 0.5d
                     ? $" ({Loc("#LOC_OPC_RotationPenalty")})"
                     : "";
-            GUILayout.Label($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatDv(_lastResult.RotationDv)} m/s{rotHint}", _styleManager.LabelStyle);
+            DrawSectionLabel($"{Loc("#LOC_OPC_RotationDv")}: {rotSign}{FormatDv(_lastResult.RotationDv)} m/s{rotHint}");
             if (_lastResult.PlaneChangeDv > 0.5d)
-                GUILayout.Label($"{Loc("#LOC_OPC_PlaneChangeDv")}: {FormatDv(_lastResult.PlaneChangeDv)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"{Loc("#LOC_OPC_RequiredDv")}: {FormatDv(_lastResult.RequiredDv)} m/s", _styleManager.LabelStyle);
+                DrawSectionLabel($"{Loc("#LOC_OPC_PlaneChangeDv")}: {FormatDv(_lastResult.PlaneChangeDv)} m/s");
+            DrawSectionLabel($"{Loc("#LOC_OPC_RequiredDv")}: {FormatDv(_lastResult.RequiredDv)} m/s");
             GUILayout.EndVertical();
 
             GUILayout.Space(4);
-            GUILayout.BeginVertical(_styleManager.SectionStyle);
-            GUILayout.Label(Loc("#LOC_OPC_LossBreakdown"), _styleManager.HeaderStyle);
-            GUILayout.Label($"  {Loc("#LOC_OPC_GravityLoss")}: {FormatDv(_lastResult.Losses.GravityLossDv)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"  {Loc("#LOC_OPC_AtmosphereLoss")}: {FormatDv(_lastResult.Losses.AtmosphericLossDv)} m/s", _styleManager.LabelStyle);
-            GUILayout.Label($"  {Loc("#LOC_OPC_AttitudeLoss")}: {FormatDv(_lastResult.Losses.AttitudeLossDv)} m/s", _styleManager.LabelStyle);
+            GUILayout.BeginVertical(_styleManager.SectionStyle, GUILayout.ExpandWidth(true));
+            DrawSectionLabel(Loc("#LOC_OPC_LossBreakdown"), useHeader: true);
+            DrawSectionLabel($"  {Loc("#LOC_OPC_GravityLoss")}: {FormatDv(_lastResult.Losses.GravityLossDv)} m/s");
+            DrawSectionLabel($"  {Loc("#LOC_OPC_AtmosphereLoss")}: {FormatDv(_lastResult.Losses.AtmosphericLossDv)} m/s");
+            DrawSectionLabel($"  {Loc("#LOC_OPC_AttitudeLoss")}: {FormatDv(_lastResult.Losses.AttitudeLossDv)} m/s");
             GUILayout.EndVertical();
 
             GUILayout.Space(6);
-            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.ExpandWidth(true)))
                 _showDvDetailsPopup = false;
 
             GUILayout.EndVertical();
@@ -963,7 +990,7 @@ namespace OrbitalPayloadCalculator.UI
             if (_lastStats?.Stages == null || _lastStats.Stages.Count == 0)
             {
                 GUILayout.Label(Loc("#LOC_OPC_NoVessel"), _styleManager.LabelStyle);
-                if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28), GUILayout.ExpandWidth(true)))
+                if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight), GUILayout.ExpandWidth(true)))
                     _showEngineRolePopup = false;
                 GUI.DragWindow(new Rect(0, 0, 10000, 24));
                 return;
@@ -987,22 +1014,27 @@ namespace OrbitalPayloadCalculator.UI
                     var engine = stage.Engines[i];
                     if (engine == null) continue;
                     var partName = string.IsNullOrEmpty(engine.PartDisplayName) ? $"#{engine.PartInstanceId}" : TruncateForDisplay(engine.PartDisplayName);
-                    const float rowHeight = 28f;
+                    var rowHeight = ButtonHeight;
+                    var currentRoleLabel = $"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(engine.Role)}";
+                    var currentRoleWidth = LabelWidth(currentRoleLabel, 220f);
+                    var cycleWidth = ButtonWidth(Loc("#LOC_OPC_CycleRole"), 120f);
+                    var autoWidth = ButtonWidth(Loc("#LOC_OPC_AutoRole"), 90f);
                     GUILayout.BeginHorizontal(_styleManager.SectionStyle, GUILayout.Height(rowHeight));
                     GUILayout.Label(partName, _styleManager.LabelStyleRow, GUILayout.MinWidth(160), GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
-                    GUILayout.Label($"{Loc("#LOC_OPC_CurrentRole")}: {LocEngineRole(engine.Role)}", _styleManager.LabelStyleRow, GUILayout.Width(200), GUILayout.Height(rowHeight));
+                    GUILayout.Label(currentRoleLabel, _styleManager.LabelStyleRow, GUILayout.Width(currentRoleWidth), GUILayout.Height(rowHeight));
 
-                    if (GUILayout.Button(Loc("#LOC_OPC_CycleRole"), _styleManager.ButtonStyle, GUILayout.Width(100), GUILayout.Height(rowHeight)))
+                    if (GUILayout.Button(Loc("#LOC_OPC_CycleRole"), _styleManager.ButtonStyle, GUILayout.Width(cycleWidth), GUILayout.Height(rowHeight)))
                     {
                         _engineRoleSelectPartId = engine.PartInstanceId;
                         _engineRoleSelectPartName = partName;
                         _showEngineRoleSelectPopup = true;
                         var rw = 320f;
                         var rh = 280f;
-                        _engineRoleSelectPopupRect = new Rect((Screen.width - rw) * 0.5f, (Screen.height - rh) * 0.5f, rw, rh);
+                        var selectScreen = UIScale.GuiScreenSize();
+                        _engineRoleSelectPopupRect = new Rect((selectScreen.x - rw) * 0.5f, (selectScreen.y - rh) * 0.5f, rw, rh);
                     }
 
-                    if (GUILayout.Button(Loc("#LOC_OPC_AutoRole"), _styleManager.ButtonStyle, GUILayout.Width(80), GUILayout.Height(rowHeight)))
+                    if (GUILayout.Button(Loc("#LOC_OPC_AutoRole"), _styleManager.ButtonStyle, GUILayout.Width(autoWidth), GUILayout.Height(rowHeight)))
                     {
                         _vesselService.ClearEngineRoleOverride(_lastStats.VesselPersistentKey, engine.PartInstanceId);
                         Compute();
@@ -1019,13 +1051,13 @@ namespace OrbitalPayloadCalculator.UI
 
             GUILayout.Space(4);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Loc("#LOC_OPC_ResetAllRoles"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            if (GUILayout.Button(Loc("#LOC_OPC_ResetAllRoles"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
             {
                 _vesselService.ClearAllEngineRoleOverrides(_lastStats.VesselPersistentKey);
                 Compute();
                 GUIUtility.ExitGUI();
             }
-            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
             {
                 _showEngineRolePopup = false;
                 _showEngineRoleSelectPopup = false;
@@ -1044,7 +1076,7 @@ namespace OrbitalPayloadCalculator.UI
             var roles = new[] { EngineRole.Main, EngineRole.Solid, EngineRole.Electric, EngineRole.Retro, EngineRole.Settling, EngineRole.EscapeTower };
             foreach (var role in roles)
             {
-                if (GUILayout.Button(LocEngineRole(role), _styleManager.ButtonStyle, GUILayout.Height(28)))
+                if (GUILayout.Button(LocEngineRole(role), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
                 {
                     _vesselService.SetEngineRoleOverride(_lastStats.VesselPersistentKey, _engineRoleSelectPartId, role);
                     _showEngineRoleSelectPopup = false;
@@ -1054,7 +1086,7 @@ namespace OrbitalPayloadCalculator.UI
             }
 
             GUILayout.Space(8);
-            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(28)))
+            if (GUILayout.Button(Loc("#LOC_OPC_Close"), _styleManager.ButtonStyle, GUILayout.Height(ButtonHeight)))
                 _showEngineRoleSelectPopup = false;
 
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
@@ -1193,7 +1225,7 @@ namespace OrbitalPayloadCalculator.UI
             _lastBodyName = _targets.LaunchBody != null
                 ? _targets.LaunchBody.bodyName ?? ""
                 : Loc("#LOC_OPC_None");
-            _vesselService.TreatCargoBayAsFairing = _settings.TreatCargoBayAsFairing;
+            _vesselService.TreatCargoBayAsFairing = _treatCargoBayAsFairing;
             _lastStats = _vesselService.ReadCurrentStats();
             _lastResult = PayloadCalculator.Compute(_lastStats, _targets, _lossConfig);
             
@@ -1203,69 +1235,6 @@ namespace OrbitalPayloadCalculator.UI
                 _analysisWindow.SetContext(_targets.LaunchBody, _targets.TargetInclinationDegrees, _targets.LaunchLatitudeDegrees);
                 // SetContext will trigger RunAnalysis inside AnalysisWindow if visible
             }
-        }
-
-        private void ApplyGuiSettings()
-        {
-            var fontSize = _settings.FontSize;
-            if (int.TryParse(_fontSizeInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-                fontSize = Mathf.Clamp(parsed, 13, 20);
-            _fontSizeInput = fontSize.ToString(CultureInfo.InvariantCulture);
-            _settings.SetFontSize(fontSize);
-
-            if (!TryParseKeyCode(_hotkeyKeyInput, out var key))
-            {
-                key = _settings.HotkeyKey;
-                _hotkeyKeyInput = key.ToString();
-            }
-
-            _settings.SetHotkey(key, _hotkeyAltInput, _hotkeyCtrlInput, _hotkeyShiftInput);
-        }
-
-        private static bool TryParseKeyCode(string input, out KeyCode key)
-        {
-            key = KeyCode.None;
-            if (string.IsNullOrWhiteSpace(input))
-                return false;
-
-            var text = input.Trim();
-            if (text.Length == 1)
-            {
-                var ch = char.ToUpperInvariant(text[0]);
-                if (ch >= 'A' && ch <= 'Z')
-                {
-                    key = (KeyCode)Enum.Parse(typeof(KeyCode), ch.ToString());
-                    return true;
-                }
-
-                if (ch >= '0' && ch <= '9')
-                {
-                    key = (KeyCode)Enum.Parse(typeof(KeyCode), $"Alpha{ch}");
-                    return true;
-                }
-            }
-
-            if (Enum.TryParse(text, true, out KeyCode parsed) && parsed != KeyCode.None)
-            {
-                key = parsed;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static string BuildHotkeyLabel(string inputKey, bool alt, bool ctrl, bool shift)
-        {
-            if (!TryParseKeyCode(inputKey, out var key))
-                key = KeyCode.None;
-
-            var parts = new List<string>();
-            if (alt) parts.Add("Alt");
-            if (ctrl) parts.Add("Ctrl");
-            if (shift) parts.Add("Shift");
-            if (key != KeyCode.None) parts.Add(key.ToString());
-            if (parts.Count == 0) return "-";
-            return string.Join("+", parts);
         }
 
         private void DrawLatitudeRow(float fs, float labelWidth)
@@ -1308,15 +1277,50 @@ namespace OrbitalPayloadCalculator.UI
         {
             var fieldWidth = fs * 5f;
             var unitWidth = fs * 3f;
+            var rowH = fs + 14f;
 
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _styleManager.LabelStyle, GUILayout.Width(labelWidth));
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            GUILayout.Label(label, _styleManager.LabelStyleRow, GUILayout.Width(labelWidth), GUILayout.Height(rowH));
             GUILayout.Space(4);
-            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(fieldWidth));
+            input = GUILayout.TextField(input, _styleManager.FieldStyle, GUILayout.Width(fieldWidth), GUILayout.Height(rowH));
             GUILayout.Space(4);
-            GUILayout.Label(unit, _styleManager.LabelStyle, GUILayout.Width(unitWidth));
+            GUILayout.Label(unit, _styleManager.LabelStyleRow, GUILayout.Width(unitWidth), GUILayout.Height(rowH));
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawResultRow(string label, string value, string unit = null, bool indent = false, bool useHeaderStyle = false)
+        {
+            var fs = FontSize;
+            var rowH = RowHeight;
+            var labelW = fs * (indent ? 12f : 11f);
+            var labelStyle = useHeaderStyle ? _styleManager.HeaderStyle : _styleManager.LabelStyleRow;
+            var valueStyle = useHeaderStyle ? _styleManager.HeaderStyle : _styleManager.LabelStyleRow;
+            var displayValue = string.IsNullOrEmpty(unit) ? value : $"{value} {unit}";
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            if (indent)
+                GUILayout.Space(fs * 0.5f);
+            GUILayout.Label(label + ":", labelStyle, GUILayout.Width(labelW), GUILayout.Height(rowH));
+            GUILayout.Label(displayValue ?? "", valueStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowH));
+            GUILayout.EndHorizontal();
+        }
+
+        private static float ButtonHeight => FontSize + 16f;
+        private static float RowHeight => FontSize + 16f;
+
+        private float ButtonWidth(string label, float minWidth)
+        {
+            var style = _styleManager.ButtonStyle ?? GUI.skin.button;
+            var width = style.CalcSize(new GUIContent(label ?? string.Empty)).x + 28f;
+            return Mathf.Ceil(Mathf.Max(minWidth, width));
+        }
+
+        private float LabelWidth(string label, float minWidth)
+        {
+            var style = _styleManager.LabelStyleRow ?? _styleManager.LabelStyle ?? GUI.skin.label;
+            var width = style.CalcSize(new GUIContent(label ?? string.Empty)).x + 10f;
+            return Mathf.Ceil(Mathf.Max(minWidth, width));
         }
 
         private void RefreshBodies()

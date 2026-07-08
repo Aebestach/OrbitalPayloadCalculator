@@ -19,7 +19,12 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle CenteredHeaderStyle { get; private set; }
         public GUIStyle PanelStyle { get; private set; }
         public GUIStyle SectionStyle { get; private set; }
+        public GUIStyle TooltipStyle { get; private set; }
         public GUIStyle WarningLabelStyle { get; private set; }
+        /// <summary>Single-line warning text; avoids orphan punctuation when wrapping.</summary>
+        public GUIStyle WarningLabelRowStyle { get; private set; }
+        /// <summary>Multi-line hint text only; all other labels use single-line styles.</summary>
+        public GUIStyle HintLabelStyle { get; private set; }
 
         private int _fontSize = -1;
         private Texture2D _panelBgTexture;
@@ -45,46 +50,71 @@ namespace OrbitalPayloadCalculator.UI
         {
             var skin = HighLogic.Skin ?? GUI.skin;
             WindowStyle = new GUIStyle(skin.window) { fontSize = fontSize + 2 };
-            LabelStyle = new GUIStyle(skin.label) { fontSize = fontSize };
-            LabelStyleRow = new GUIStyle(skin.label) { fontSize = fontSize, alignment = TextAnchor.MiddleLeft };
-            HeaderStyle = new GUIStyle(skin.label)
+            LabelStyle = CreateSingleLineLabel(skin.label, fontSize);
+            LabelStyleRow = CreateSingleLineLabel(skin.label, fontSize, TextAnchor.MiddleLeft);
+            HeaderStyle = CreateSingleLineLabel(skin.label, fontSize + 1, TextAnchor.MiddleLeft, FontStyle.Bold);
+            CenteredHeaderStyle = CreateSingleLineLabel(skin.label, fontSize + 1, TextAnchor.MiddleCenter, FontStyle.Bold);
+            SmallLabelStyle = CreateSingleLineLabel(skin.label, Mathf.Max(11, fontSize - 2));
+            SmallBoldLabelStyle = CreateSingleLineLabel(skin.label, Mathf.Max(11, fontSize - 2), TextAnchor.MiddleLeft, FontStyle.Bold);
+            FieldStyle = new GUIStyle(skin.textField)
             {
-                fontSize = fontSize + 1,
-                fontStyle = FontStyle.Bold
+                fontSize = fontSize,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(skin.textField.padding.left, skin.textField.padding.right, 4, 4)
             };
-            CenteredHeaderStyle = new GUIStyle(skin.label)
+            ButtonStyle = new GUIStyle(skin.button)
             {
-                fontSize = fontSize + 1,
+                fontSize = fontSize,
                 fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(skin.button.padding.left, skin.button.padding.right, 6, 6)
             };
-            SmallLabelStyle = new GUIStyle(skin.label)
-            {
-                fontSize = Mathf.Max(11, fontSize - 2),
-                fontStyle = FontStyle.Normal
-            };
-            SmallBoldLabelStyle = new GUIStyle(skin.label)
-            {
-                fontSize = Mathf.Max(11, fontSize - 2),
-                fontStyle = FontStyle.Bold
-            };
-            FieldStyle = new GUIStyle(skin.textField) { fontSize = fontSize };
-            ButtonStyle = new GUIStyle(skin.button) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter };
             SelectedButtonStyle = new GUIStyle(skin.button)
             {
                 fontSize = fontSize,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(skin.button.padding.left, skin.button.padding.right, 6, 6),
                 normal = { textColor = new Color(0.4f, 1f, 0.4f) },
                 hover = { textColor = new Color(0.4f, 1f, 0.4f) }
             };
-            ToggleStyle = new GUIStyle(skin.toggle) { fontSize = fontSize };
+            ToggleStyle = new GUIStyle(skin.toggle)
+            {
+                fontSize = fontSize,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0)
+            };
 
             WarningLabelStyle = new GUIStyle(skin.label)
             {
                 fontSize = fontSize,
                 normal = { textColor = new Color(1f, 0.85f, 0.2f) },
-                wordWrap = true
+                wordWrap = true,
+                padding = new RectOffset(0, 0, 3, 3)
+            };
+            WarningLabelRowStyle = new GUIStyle(skin.label)
+            {
+                fontSize = fontSize,
+                normal = { textColor = new Color(1f, 0.85f, 0.2f) },
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                padding = new RectOffset(0, 0, 3, 3)
+            };
+            HintLabelStyle = new GUIStyle(skin.label)
+            {
+                fontSize = Mathf.Max(11, fontSize - 2),
+                wordWrap = true,
+                clipping = TextClipping.Overflow
             };
 
             _panelBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
@@ -94,8 +124,9 @@ namespace OrbitalPayloadCalculator.UI
             PanelStyle = new GUIStyle
             {
                 normal = { background = _panelBgTexture },
-                padding = new RectOffset(8, 8, 6, 6),
-                margin = new RectOffset(0, 0, 0, 0)
+                padding = new RectOffset(8, 8, 8, 8),
+                margin = new RectOffset(0, 0, 0, 0),
+                stretchWidth = true
             };
 
             _sectionBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
@@ -105,8 +136,34 @@ namespace OrbitalPayloadCalculator.UI
             SectionStyle = new GUIStyle
             {
                 normal = { background = _sectionBgTexture },
-                padding = new RectOffset(6, 6, 4, 4),
-                margin = new RectOffset(0, 0, 2, 2)
+                padding = new RectOffset(8, 8, 6, 6),
+                margin = new RectOffset(0, 0, 2, 2),
+                stretchWidth = true
+            };
+
+            TooltipStyle = new GUIStyle(skin.label)
+            {
+                fontSize = Mathf.Max(12, fontSize - 1),
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                padding = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0),
+                normal = { textColor = new Color(0.55f, 1f, 0.55f) }
+            };
+        }
+
+        private static GUIStyle CreateSingleLineLabel(GUIStyle template, int fontSize, TextAnchor alignment = TextAnchor.MiddleLeft, FontStyle fontStyle = FontStyle.Normal)
+        {
+            return new GUIStyle(template)
+            {
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                alignment = alignment,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(0, 0, 3, 3)
             };
         }
 
@@ -125,7 +182,10 @@ namespace OrbitalPayloadCalculator.UI
             ToggleStyle = null;
             PanelStyle = null;
             SectionStyle = null;
+            TooltipStyle = null;
             WarningLabelStyle = null;
+            WarningLabelRowStyle = null;
+            HintLabelStyle = null;
 
             if (_panelBgTexture != null)
             {
