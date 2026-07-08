@@ -72,7 +72,6 @@ namespace OrbitalPayloadCalculator
     internal sealed class OrbitalPayloadCalculatorController
     {
         private readonly bool _isEditor;
-        private readonly PluginSettings _settings;
         private readonly VesselSourceService _vesselSourceService;
         private readonly CalculatorWindow _window;
 
@@ -85,9 +84,8 @@ namespace OrbitalPayloadCalculator
         public OrbitalPayloadCalculatorController(bool isEditor)
         {
             _isEditor = isEditor;
-            _settings = PluginSettings.LoadOrDefault();
             _vesselSourceService = new VesselSourceService(isEditor);
-            _window = new CalculatorWindow(_settings, _vesselSourceService, isEditor);
+            _window = new CalculatorWindow(_vesselSourceService, isEditor);
         }
 
         public void Start()
@@ -143,14 +141,8 @@ namespace OrbitalPayloadCalculator
 
         private bool ShouldToggleWithHotkey()
         {
-            if (_settings.HotkeyAlt && !(Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)))
-                return false;
-            if (_settings.HotkeyCtrl && !(Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
-                return false;
-            if (_settings.HotkeyShift && !(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
-                return false;
-
-            return _settings.HotkeyKey != KeyCode.None && Input.GetKeyDown(_settings.HotkeyKey);
+            var parameters = OrbitalPayloadCalculatorParameters.Instance;
+            return parameters != null && parameters.IsHotkeyPressed();
         }
 
         private void OnAppLauncherReady()
