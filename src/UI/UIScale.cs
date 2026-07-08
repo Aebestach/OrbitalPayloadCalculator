@@ -14,11 +14,30 @@ namespace OrbitalPayloadCalculator.UI
 
         public static bool IsActive { get; private set; }
 
-        internal static float DefaultUiScalePercent =>
-            Screen.height >= 2160 ? 75f : 100f;
+        internal static float DefaultUiScalePercent
+        {
+            get
+            {
+                if (Screen.height >= 2160)
+                    return 75f;
+                if (Screen.height >= 1440)
+                    return 85f;
+                return 100f;
+            }
+        }
 
-        internal static float ModUiScalePercent =>
-            OrbitalPayloadCalculatorParameters.Instance?.uiScalePercent ?? DefaultUiScalePercent;
+        internal static float ModUiScalePercent
+        {
+            get
+            {
+                OrbitalPayloadCalculatorParameters parameters = OrbitalPayloadCalculatorParameters.Instance;
+                if (parameters == null)
+                    return DefaultUiScalePercent;
+                if (parameters.uiScaleAuto)
+                    return DefaultUiScalePercent;
+                return parameters.uiScalePercent;
+            }
+        }
 
         public static float Factor
         {

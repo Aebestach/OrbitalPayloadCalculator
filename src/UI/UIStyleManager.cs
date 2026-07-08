@@ -25,6 +25,8 @@ namespace OrbitalPayloadCalculator.UI
         public GUIStyle WarningLabelRowStyle { get; private set; }
         /// <summary>Multi-line hint text only; all other labels use single-line styles.</summary>
         public GUIStyle HintLabelStyle { get; private set; }
+        /// <summary>Multi-line help text in popups (advanced settings help, etc.).</summary>
+        public GUIStyle HelpLabelStyle { get; private set; }
 
         private int _fontSize = -1;
         private Texture2D _panelBgTexture;
@@ -99,7 +101,8 @@ namespace OrbitalPayloadCalculator.UI
                 fontSize = fontSize,
                 normal = { textColor = new Color(1f, 0.85f, 0.2f) },
                 wordWrap = true,
-                padding = new RectOffset(0, 0, 3, 3)
+                clipping = TextClipping.Overflow,
+                padding = new RectOffset(2, 2, 4, 4)
             };
             WarningLabelRowStyle = new GUIStyle(skin.label)
             {
@@ -108,13 +111,23 @@ namespace OrbitalPayloadCalculator.UI
                 alignment = TextAnchor.MiddleLeft,
                 wordWrap = false,
                 clipping = TextClipping.Overflow,
-                padding = new RectOffset(0, 0, 3, 3)
+                padding = new RectOffset(2, 2, 4, 4)
             };
             HintLabelStyle = new GUIStyle(skin.label)
             {
                 fontSize = Mathf.Max(11, fontSize - 2),
                 wordWrap = true,
-                clipping = TextClipping.Overflow
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.UpperLeft,
+                padding = new RectOffset(2, 2, 4, 4)
+            };
+            HelpLabelStyle = new GUIStyle(skin.label)
+            {
+                fontSize = Mathf.Max(11, fontSize - 2),
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.UpperLeft,
+                padding = new RectOffset(2, 2, 4, 4)
             };
 
             _panelBgTexture = new Texture2D(1, 1, TextureFormat.ARGB32, false);
@@ -136,7 +149,7 @@ namespace OrbitalPayloadCalculator.UI
             SectionStyle = new GUIStyle
             {
                 normal = { background = _sectionBgTexture },
-                padding = new RectOffset(8, 8, 6, 6),
+                padding = new RectOffset(8, 8, 8, 6),
                 margin = new RectOffset(0, 0, 2, 2),
                 stretchWidth = true
             };
@@ -162,8 +175,8 @@ namespace OrbitalPayloadCalculator.UI
                 fontStyle = fontStyle,
                 alignment = alignment,
                 wordWrap = false,
-                clipping = TextClipping.Clip,
-                padding = new RectOffset(0, 0, 3, 3)
+                clipping = TextClipping.Overflow,
+                padding = new RectOffset(2, 2, 4, 4)
             };
         }
 
@@ -186,6 +199,7 @@ namespace OrbitalPayloadCalculator.UI
             WarningLabelStyle = null;
             WarningLabelRowStyle = null;
             HintLabelStyle = null;
+            HelpLabelStyle = null;
 
             if (_panelBgTexture != null)
             {

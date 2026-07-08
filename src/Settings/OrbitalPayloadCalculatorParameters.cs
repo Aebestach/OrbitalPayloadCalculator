@@ -16,6 +16,11 @@ namespace OrbitalPayloadCalculator.Settings
         public override int SectionOrder => 0;
         public override bool HasPresets => false;
 
+        [GameParameters.CustomParameterUI(
+            "#LOC_OPC_ParamUiScaleAuto",
+            toolTip = "#LOC_OPC_ParamUiScaleAuto_tip")]
+        public bool uiScaleAuto = true;
+
         [GameParameters.CustomFloatParameterUI(
             "#LOC_OPC_ParamUiScalePercent",
             toolTip = "#LOC_OPC_ParamUiScalePercent_tip",
@@ -81,10 +86,42 @@ namespace OrbitalPayloadCalculator.Settings
 
         public override void OnLoad(ConfigNode node)
         {
+            bool hadAutoFlag = node != null && node.HasValue("uiScaleAuto");
+            bool hadUiScale = node != null && node.HasValue("uiScalePercent");
             base.OnLoad(node);
             instance = null;
-            if (Screen.height >= 2160 && !node.HasValue("uiScalePercent"))
-                uiScalePercent = 75f;
+
+            if (!hadAutoFlag)
+            {
+                uiScaleAuto = !hadUiScale ||
+                    Mathf.Approximately(uiScalePercent, 100f) ||
+                    Mathf.Approximately(uiScalePercent, 80f);
+            }
+
+            ApplyAutoUiScale();
+        }
+
+        internal void ApplyAutoUiScale()
+        {
+            if (!uiScaleAuto)
+                return;
+            uiScalePercent = UI.UIScale.DefaultUiScalePercent;
+        }
+
+        public override bool Enabled(MemberInfo member, GameParameters parameters)
+        {
+            var opc = parameters?.CustomParams<OrbitalPayloadCalculatorParameters>();
+            if (opc != null && opc.uiScaleAuto)
+                opc.ApplyAutoUiScale();
+            return true;
+        }
+
+        public override bool Interactible(MemberInfo member, GameParameters parameters)
+        {
+            var opc = parameters?.CustomParams<OrbitalPayloadCalculatorParameters>();
+            if (member.Name == "uiScalePercent" && opc != null && opc.uiScaleAuto)
+                return false;
+            return true;
         }
 
         public override IList ValidValues(MemberInfo member)
