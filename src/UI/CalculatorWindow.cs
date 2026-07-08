@@ -714,26 +714,27 @@ namespace OrbitalPayloadCalculator.UI
         private void DrawAdvancedHelpPopup(int id)
         {
             var screen = UIScale.GuiScreenSize();
-            var maxW = Mathf.Min(480f, screen.x * 0.9f);
+            var maxW = Mathf.Min(520f, screen.x * 0.9f);
             GUILayout.BeginVertical(GUILayout.MinWidth(maxW), GUILayout.MaxWidth(maxW));
             GUILayout.Space(6);
 
             _advancedHelpPopupScroll = GUILayout.BeginScrollView(_advancedHelpPopupScroll, GUILayout.ExpandHeight(true));
 
-            var smallStyle = _styleManager.SmallLabelStyle ?? _styleManager.LabelStyle;
+            var helpStyle = _styleManager.HelpLabelStyle ?? _styleManager.HintLabelStyle ?? _styleManager.LabelStyle;
+            var helpHeaderStyle = _styleManager.SmallBoldLabelStyle ?? helpStyle;
 
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpPriority"), _styleManager.SmallBoldLabelStyle ?? smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpPriority"), helpHeaderStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentDerived"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnExponentDerived"), helpStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnSpeed"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnSpeed"), helpStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnAlt"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpTurnAlt"), helpStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpCda"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpCda"), helpStyle);
             DrawHelpSeparator();
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpLossOverrides"), smallStyle);
-            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpAttitudeTable"), smallStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpLossOverrides"), helpStyle);
+            GUILayout.Label(Loc("#LOC_OPC_AdvancedHelpAttitudeTable"), helpStyle);
 
             GUILayout.EndScrollView();
 

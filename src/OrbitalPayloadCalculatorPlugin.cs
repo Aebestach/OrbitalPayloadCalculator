@@ -90,6 +90,7 @@ namespace OrbitalPayloadCalculator
 
         public void Start()
         {
+            OrbitalPayloadCalculatorParameters.Instance?.ApplyAutoUiScale();
             CreateIcon();
             GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(OnAppLauncherDestroyed);
