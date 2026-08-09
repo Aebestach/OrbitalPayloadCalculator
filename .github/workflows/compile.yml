@@ -1,18 +1,11 @@
 name: compile
 
 on:
-  push:
-    branches: [ dev, master ]
-    paths:
-      - '**/*.cs'
-      - '**/*.csproj'
-      - '**/*.props'
   pull_request:
     paths:
       - '**/*.cs'
       - '**/*.csproj'
       - '**/*.props'
-  workflow_dispatch:
 
 jobs:
   compile:
